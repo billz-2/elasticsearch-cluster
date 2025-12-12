@@ -1,4 +1,4 @@
-package elasticcluster
+package settingsprovider
 
 import (
 	"bytes"
@@ -10,6 +10,13 @@ import (
 
 	"github.com/redis/go-redis/v9"
 )
+
+type GetESSettingsRes struct {
+	ClusterID   int    `json:"cluster_id"`
+	Version     int    `json:"version"`
+	ClusterName string `json:"cluster_name"`
+	IndexName   string `json:"index_name"`
+}
 
 type SettingsProvider interface {
 	GetSettings(ctx context.Context, companyID, indexType string) (GetESSettingsRes, error)

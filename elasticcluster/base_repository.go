@@ -2,19 +2,14 @@ package elasticcluster
 
 import (
 	"context"
+
+	"github.com/billz-2/elasticsearch-cluster/settingsprovider"
 )
 
 const (
 	ESIndexTypeProductTree = "product_tree"
 	ESIndexTypeOrder       = "order"
 )
-
-type GetESSettingsRes struct {
-	ClusterID   int    `json:"cluster_id"`
-	Version     int    `json:"version"`
-	ClusterName string `json:"cluster_name"`
-	IndexName   string `json:"index_name"`
-}
 
 type BaseRepository interface {
 	Search(ctx context.Context, req *SearchRequest) *Response
@@ -28,11 +23,11 @@ type BaseRepository interface {
 }
 
 type baseRepository struct {
-	settingsProvider SettingsProvider
+	settingsProvider settingsprovider.SettingsProvider
 	resolver         *Resolver
 }
 
-func NewBaseRepository(settingsProvider SettingsProvider, resolver *Resolver) BaseRepository {
+func NewBaseRepository(settingsProvider settingsprovider.SettingsProvider, resolver *Resolver) BaseRepository {
 	return &baseRepository{
 		settingsProvider: settingsProvider,
 		resolver:         resolver,
