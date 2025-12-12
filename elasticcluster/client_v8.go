@@ -56,6 +56,21 @@ func (c *clientV8) Search(ctx context.Context, req *SearchRequest) *Response {
 	return &Response{StatusCode: res.StatusCode, Data: data}
 }
 
+func (c *clientV8) Get(ctx context.Context, req *GetRequest) *Response {
+	get := c.Client.Get
+	res, err := get(req.Index, req.DocumentID, get.WithContext(ctx))
+	if err != nil {
+		return &Response{Err: err}
+	}
+
+	data, err := ResponseDecode(res)
+	if err != nil {
+		return &Response{StatusCode: res.StatusCode, Err: err}
+	}
+
+	return &Response{StatusCode: res.StatusCode, Data: data}
+}
+
 func (c *clientV8) OpenPointInTime(ctx context.Context, req *OpenPointInTimeRequest) *Response {
 	keepAlive := strings.TrimSpace(req.KeepAlive)
 	if keepAlive == "" {

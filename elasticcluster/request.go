@@ -48,6 +48,30 @@ func (sr *SearchRequest) GetRequestV9() esapiv9.SearchRequest {
 	}
 }
 
+type GetRequest struct {
+	CompanyID  string
+	IndexType  string
+	Index      string
+	DocumentID string
+	Realtime   bool
+}
+
+func (gr *GetRequest) GetRequest() esapi.GetRequest {
+	return esapi.GetRequest{
+		Index:      gr.Index,
+		DocumentID: gr.DocumentID,
+		Realtime:   &gr.Realtime,
+	}
+}
+
+func (gr *GetRequest) GetRequestV9() esapiv9.GetRequest {
+	return esapiv9.GetRequest{
+		Index:      gr.Index,
+		DocumentID: gr.DocumentID,
+		Realtime:   &gr.Realtime,
+	}
+}
+
 func getIndex(idx string) []string {
 	if idx == "" {
 		return nil
