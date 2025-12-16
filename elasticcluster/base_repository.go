@@ -2,8 +2,6 @@ package elasticcluster
 
 import (
 	"context"
-
-	"github.com/billz-2/elasticsearch-cluster/settingsprovider"
 )
 
 const (
@@ -24,11 +22,11 @@ type BaseRepository interface {
 }
 
 type baseRepository struct {
-	settingsProvider settingsprovider.SettingsProvider
+	settingsProvider SettingsProvider
 	resolver         *Resolver
 }
 
-func NewBaseRepository(settingsProvider settingsprovider.SettingsProvider, resolver *Resolver) BaseRepository {
+func NewBaseRepository(settingsProvider SettingsProvider, resolver *Resolver) BaseRepository {
 	return &baseRepository{
 		settingsProvider: settingsProvider,
 		resolver:         resolver,

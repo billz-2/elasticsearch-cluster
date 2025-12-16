@@ -1,4 +1,4 @@
-package settingsprovider
+package elasticcluster
 
 import (
 	"bytes"
