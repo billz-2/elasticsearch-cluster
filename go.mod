@@ -3,7 +3,7 @@ module github.com/billz-2/elasticsearch-cluster
 go 1.23
 
 require (
-	github.com/elastic/go-elasticsearch/v8 v8.19.0
+	github.com/elastic/go-elasticsearch/v8 v8.0.0
 	github.com/elastic/go-elasticsearch/v9 v9.2.0
 	github.com/redis/go-redis/v9 v9.17.2
 )
