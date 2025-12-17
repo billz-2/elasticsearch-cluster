@@ -101,7 +101,7 @@ func (c *clientV9) ClosePointInTime(ctx context.Context, req *ClosePointInTimeRe
 	}
 	closePointInTime := c.Client.ClosePointInTime
 	res, err := closePointInTime(
-		req.Body,
+		closePointInTime.WithBody(req.Body),
 		closePointInTime.WithContext(ctx),
 	)
 	if err != nil {
