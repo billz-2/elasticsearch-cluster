@@ -79,10 +79,9 @@ func (c *clientV8) OpenPointInTime(ctx context.Context, req *OpenPointInTimeRequ
 
 	openPointInTime := c.Client.OpenPointInTime
 	res, err := openPointInTime(
-		getIndex(req.Index),
-		keepAlive,
 		openPointInTime.WithContext(ctx),
-	)
+		openPointInTime.WithKeepAlive(keepAlive),
+		openPointInTime.WithIndex(req.Index))
 	if err != nil {
 		return &Response{Err: err}
 	}
