@@ -9,15 +9,9 @@ const (
 	ESIndexTypeOrder       = "order"
 )
 
-type GetESSettingsRes struct {
-	ClusterID   int    `json:"cluster_id"`
-	Version     int    `json:"version"`
-	ClusterName string `json:"cluster_name"`
-	IndexName   string `json:"index_name"`
-}
-
 type BaseRepository interface {
 	Search(ctx context.Context, req *SearchRequest) *Response
+	Get(ctx context.Context, req *GetRequest) *Response
 	OpenPointInTime(ctx context.Context, req *OpenPointInTimeRequest) *Response
 	ClosePointInTime(ctx context.Context, req *ClosePointInTimeRequest) *Response
 
@@ -46,6 +40,16 @@ func (br *baseRepository) Search(ctx context.Context, req *SearchRequest) *Respo
 				req.Index = indexName
 			}
 			return es.Search(ctx, req)
+		})
+}
+
+func (br *baseRepository) Get(ctx context.Context, req *GetRequest) *Response {
+	return br.withClient(ctx, req.CompanyID, req.IndexType,
+		func(es ESClient, indexName string) *Response {
+			if req.Index == "" {
+				req.Index = indexName
+			}
+			return es.Get(ctx, req)
 		})
 }
 

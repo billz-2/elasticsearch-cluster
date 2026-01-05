@@ -5,23 +5,23 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/elastic/go-elasticsearch/v9"
-	esapiv9 "github.com/elastic/go-elasticsearch/v9/esapi"
+	"github.com/elastic/go-elasticsearch/v8"
+	"github.com/elastic/go-elasticsearch/v8/esapi"
 )
 
-type clientV9 struct {
+type clientV8 struct {
 	*elasticsearch.Client
 }
 
-func NewClientV9(client *elasticsearch.Client) ESClient {
-	return &clientV9{
+func NewClientV8(client *elasticsearch.Client) ESClient {
+	return &clientV8{
 		Client: client,
 	}
 }
 
-func (c *clientV9) Search(ctx context.Context, req *SearchRequest) *Response {
+func (c *clientV8) Search(ctx context.Context, req *SearchRequest) *Response {
 	search := c.Client.Search
-	opts := []func(*esapiv9.SearchRequest){
+	opts := []func(*esapi.SearchRequest){
 		search.WithContext(ctx),
 	}
 	if req.Index != "" {
@@ -48,7 +48,7 @@ func (c *clientV9) Search(ctx context.Context, req *SearchRequest) *Response {
 		return &Response{Err: err}
 	}
 
-	data, err := ResponseDecodeV9(res)
+	data, err := ResponseDecode(res)
 	if err != nil {
 		return &Response{StatusCode: res.StatusCode, Err: err}
 	}
@@ -56,7 +56,22 @@ func (c *clientV9) Search(ctx context.Context, req *SearchRequest) *Response {
 	return &Response{StatusCode: res.StatusCode, Data: data}
 }
 
-func (c *clientV9) OpenPointInTime(ctx context.Context, req *OpenPointInTimeRequest) *Response {
+func (c *clientV8) Get(ctx context.Context, req *GetRequest) *Response {
+	get := c.Client.Get
+	res, err := get(req.Index, req.DocumentID, get.WithContext(ctx))
+	if err != nil {
+		return &Response{Err: err}
+	}
+
+	data, err := ResponseDecode(res)
+	if err != nil {
+		return &Response{StatusCode: res.StatusCode, Err: err}
+	}
+
+	return &Response{StatusCode: res.StatusCode, Data: data}
+}
+
+func (c *clientV8) OpenPointInTime(ctx context.Context, req *OpenPointInTimeRequest) *Response {
 	keepAlive := strings.TrimSpace(req.KeepAlive)
 	if keepAlive == "" {
 		keepAlive = "1m"
@@ -64,15 +79,14 @@ func (c *clientV9) OpenPointInTime(ctx context.Context, req *OpenPointInTimeRequ
 
 	openPointInTime := c.Client.OpenPointInTime
 	res, err := openPointInTime(
-		[]string{req.Index},
-		keepAlive,
 		openPointInTime.WithContext(ctx),
-	)
+		openPointInTime.WithKeepAlive(keepAlive),
+		openPointInTime.WithIndex(req.Index))
 	if err != nil {
 		return &Response{Err: err}
 	}
 
-	data, err := ResponseDecodeV9(res)
+	data, err := ResponseDecode(res)
 	if err != nil {
 		return &Response{StatusCode: res.StatusCode, Err: err}
 	}
@@ -80,20 +94,20 @@ func (c *clientV9) OpenPointInTime(ctx context.Context, req *OpenPointInTimeRequ
 	return &Response{StatusCode: res.StatusCode, Data: data}
 }
 
-func (c *clientV9) ClosePointInTime(ctx context.Context, req *ClosePointInTimeRequest) *Response {
+func (c *clientV8) ClosePointInTime(ctx context.Context, req *ClosePointInTimeRequest) *Response {
 	if req == nil || req.Body == nil {
 		return &Response{Err: errors.New("close PIT body is required")}
 	}
 	closePointInTime := c.Client.ClosePointInTime
 	res, err := closePointInTime(
-		req.Body,
 		closePointInTime.WithContext(ctx),
+		closePointInTime.WithBody(req.Body),
 	)
 	if err != nil {
 		return &Response{Err: err}
 	}
 
-	data, err := ResponseDecodeV9(res)
+	data, err := ResponseDecode(res)
 	if err != nil {
 		return &Response{StatusCode: res.StatusCode, Err: err}
 	}
@@ -101,8 +115,8 @@ func (c *clientV9) ClosePointInTime(ctx context.Context, req *ClosePointInTimeRe
 	return &Response{StatusCode: res.StatusCode, Data: data}
 }
 
-func (c *clientV9) CreateIndex(ctx context.Context, req *CreateIndexRequest) *Response {
-	createReq := esapiv9.IndicesCreateRequest{
+func (c *clientV8) CreateIndex(ctx context.Context, req *CreateIndexRequest) *Response {
+	createReq := esapi.IndicesCreateRequest{
 		Index: req.Index,
 		Body:  req.Body,
 	}
@@ -111,7 +125,7 @@ func (c *clientV9) CreateIndex(ctx context.Context, req *CreateIndexRequest) *Re
 		return &Response{Err: err}
 	}
 
-	data, err := ResponseDecodeV9(res)
+	data, err := ResponseDecode(res)
 	if err != nil {
 		return &Response{StatusCode: res.StatusCode, Err: err}
 	}
@@ -119,8 +133,8 @@ func (c *clientV9) CreateIndex(ctx context.Context, req *CreateIndexRequest) *Re
 	return &Response{StatusCode: res.StatusCode, Data: data}
 }
 
-func (c *clientV9) DeleteIndex(ctx context.Context, req *DeleteIndexRequest) *Response {
-	deleteReq := esapiv9.IndicesDeleteRequest{
+func (c *clientV8) DeleteIndex(ctx context.Context, req *DeleteIndexRequest) *Response {
+	deleteReq := esapi.IndicesDeleteRequest{
 		Index: getIndex(req.Index),
 	}
 	res, err := deleteReq.Do(ctx, c.Client)
@@ -128,7 +142,7 @@ func (c *clientV9) DeleteIndex(ctx context.Context, req *DeleteIndexRequest) *Re
 		return &Response{Err: err}
 	}
 
-	data, err := ResponseDecodeV9(res)
+	data, err := ResponseDecode(res)
 	if err != nil {
 		return &Response{StatusCode: res.StatusCode, Err: err}
 	}
@@ -136,8 +150,8 @@ func (c *clientV9) DeleteIndex(ctx context.Context, req *DeleteIndexRequest) *Re
 	return &Response{StatusCode: res.StatusCode, Data: data}
 }
 
-func (c *clientV9) Create(ctx context.Context, req *CreateRequest) *Response {
-	createReq := esapiv9.CreateRequest{
+func (c *clientV8) Create(ctx context.Context, req *CreateRequest) *Response {
+	createReq := esapi.CreateRequest{
 		Index:      req.Index,
 		DocumentID: req.DocumentID,
 		Body:       req.Body,
@@ -148,7 +162,7 @@ func (c *clientV9) Create(ctx context.Context, req *CreateRequest) *Response {
 		return &Response{Err: err}
 	}
 
-	data, err := ResponseDecodeV9(res)
+	data, err := ResponseDecode(res)
 	if err != nil {
 		return &Response{StatusCode: res.StatusCode, Err: err}
 	}

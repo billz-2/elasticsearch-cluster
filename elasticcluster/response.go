@@ -41,6 +41,7 @@ func ResponseDecodeV9(r *esapiv9.Response) (map[string]interface{}, error) {
 }
 
 func handleESResponseBody(body io.ReadCloser, statusCode int, isError bool) (map[string]interface{}, error) {
+	defer body.Close()
 	if isError {
 		var e map[string]interface{}
 		err := json.NewDecoder(body).Decode(&e)
@@ -63,7 +64,6 @@ func handleESResponseBody(body io.ReadCloser, statusCode int, isError bool) (map
 
 		return nil, err
 	}
-	defer body.Close()
 	var res map[string]interface{}
 	if err := json.NewDecoder(body).Decode(&res); err != nil {
 		return nil, err

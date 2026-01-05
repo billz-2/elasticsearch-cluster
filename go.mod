@@ -1,10 +1,10 @@
 module github.com/billz-2/elasticsearch-cluster
 
-go 1.25.1
+go 1.23.0
 
 require (
-	github.com/elastic/go-elasticsearch/v8 v8.19.0
-	github.com/elastic/go-elasticsearch/v9 v9.2.0
+	github.com/elastic/go-elasticsearch/v8 v8.0.0-20210531084204-f01628963386
+	github.com/elastic/go-elasticsearch/v9 v9.0.0
 	github.com/redis/go-redis/v9 v9.17.2
 )
 
@@ -18,4 +18,5 @@ require (
 	go.opentelemetry.io/otel v1.35.0 // indirect
 	go.opentelemetry.io/otel/metric v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
+	go.uber.org/mock v0.6.0 // indirect
 )

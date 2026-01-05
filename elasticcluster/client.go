@@ -9,6 +9,7 @@ const (
 
 type ESClient interface {
 	Search(ctx context.Context, req *SearchRequest) *Response
+	Get(ctx context.Context, req *GetRequest) *Response
 	OpenPointInTime(ctx context.Context, req *OpenPointInTimeRequest) *Response
 	ClosePointInTime(ctx context.Context, req *ClosePointInTimeRequest) *Response
 	CreateIndex(ctx context.Context, req *CreateIndexRequest) *Response
@@ -21,6 +22,10 @@ type errorClient struct {
 }
 
 func (c errorClient) Search(_ context.Context, _ *SearchRequest) *Response {
+	return &Response{Err: c.err}
+}
+
+func (c errorClient) Get(_ context.Context, _ *GetRequest) *Response {
 	return &Response{Err: c.err}
 }
 
