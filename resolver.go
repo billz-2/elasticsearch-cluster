@@ -1,79 +1,245 @@
-package elasticcluster
+package esclient
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"time"
 
-	elasticv8 "github.com/elastic/go-elasticsearch/v8"
-	elasticv9 "github.com/elastic/go-elasticsearch/v9"
+	"github.com/pkg/errors"
+	"github.com/redis/go-redis/v9"
 )
 
-type ClusterConn struct {
-	V8 ESClient
-	V9 ESClient
+// ClusterInfo represents routing information from sync service.
+type ClusterInfo struct {
+	ClusterName string `json:"cluster_name"`
+	ClusterID   int    `json:"cluster_id"`
+	IndexName   string `json:"index_name"`
 }
 
-// Resolver selects ESClient by cluster name/version.
+// Resolver resolves cluster and index for company using Redis cache and sync service.
 type Resolver struct {
-	connections map[string]ClusterConn
+	registry   *Registry
+	redis      *redis.Client
+	syncURL    string
+	cacheTTL   time.Duration
+	httpClient *http.Client
 }
 
-func NewResolver(connections map[string]ClusterConn) *Resolver {
-	return &Resolver{connections: connections}
+// ResolverConfig configures the resolver.
+type ResolverConfig struct {
+	Registry   *Registry     // Registry with pre-created clients
+	Redis      *redis.Client // Redis client for caching
+	SyncURL    string        // Sync service URL (e.g., "http://sync-service:8080")
+	CacheTTL   time.Duration // Cache TTL (default: 24h)
+	HTTPClient *http.Client  // HTTP client for sync calls (optional)
 }
 
-// NewResolverFromConfig builds Resolver from config elastic cluster credentials.
-func NewResolverFromConfig(elasticClusterNameCredsMap map[string]ElasticClusterCreds) (*Resolver, error) {
-	if elasticClusterNameCredsMap == nil {
-		return nil, fmt.Errorf("es resolver: config is nil")
+// NewResolver creates a new resolver with Redis caching.
+func NewResolver(cfg ResolverConfig) (*Resolver, error) {
+	if cfg.Registry == nil {
+		return nil, errors.New("registry is required")
+	}
+	if cfg.Redis == nil {
+		return nil, errors.New("redis client is required")
+	}
+	if cfg.SyncURL == "" {
+		return nil, errors.New("sync service URL is required")
 	}
 
-	resolverConns := make(map[string]ClusterConn, len(elasticClusterNameCredsMap))
-	for name, cluster := range elasticClusterNameCredsMap {
-		clientV8, err := elasticv8.NewClient(elasticv8.Config{
-			Addresses: cluster.Addresses,
-			Username:  cluster.User,
-			Password:  cluster.Password,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create ES v8 client for cluster %s: %w", name, err)
-		}
+	if cfg.CacheTTL == 0 {
+		cfg.CacheTTL = 24 * time.Hour
+	}
 
-		clientV9, err := elasticv9.NewClient(elasticv9.Config{
-			Addresses: cluster.Addresses,
-			Username:  cluster.User,
-			Password:  cluster.Password,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create ES v9 client for cluster %s: %w", name, err)
-		}
-
-		resolverConns[name] = ClusterConn{
-			V8: NewClientV8(clientV8),
-			V9: NewClientV9(clientV9),
+	if cfg.HTTPClient == nil {
+		cfg.HTTPClient = &http.Client{
+			Timeout: 5 * time.Second,
 		}
 	}
 
-	return NewResolver(resolverConns), nil
+	return &Resolver{
+		registry:   cfg.Registry,
+		redis:      cfg.Redis,
+		syncURL:    cfg.SyncURL,
+		cacheTTL:   cfg.CacheTTL,
+		httpClient: cfg.HTTPClient,
+	}, nil
 }
 
-func (r *Resolver) Get(clusterName string, version int) ESClient {
-	conn, ok := r.connections[clusterName]
-	if !ok {
-		return errorClient{err: fmt.Errorf("es resolver: cluster %s not configured", clusterName)}
+// Resolve resolves cluster and index for company and index type.
+// Returns typed client and index name.
+func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*Client, string, error) {
+	if companyID == "" {
+		return nil, "", errors.New("company ID is required")
+	}
+	if indexType == "" {
+		return nil, "", errors.New("index type is required")
 	}
 
-	switch version {
-	case ESVersion9:
-		if conn.V9 == nil {
-			return errorClient{err: fmt.Errorf("es resolver: cluster %s has no v9 client", clusterName)}
-		}
-		return conn.V9
-	case ESVersion8:
-		if conn.V8 == nil {
-			return errorClient{err: fmt.Errorf("es resolver: cluster %s has no v8 client", clusterName)}
-		}
-		return conn.V8
-	default:
-		return errorClient{err: fmt.Errorf("es resolver: unsupported version %d for cluster %s", version, clusterName)}
+	// 1. Try Redis cache
+	info, err := r.getFromCache(ctx, companyID, indexType)
+	if err == nil && info != nil {
+		client, err := r.createClient(info)
+		return client, info.IndexName, err
 	}
+
+	// 2. Fetch from sync service
+	info, err = r.fetchFromSync(ctx, companyID, indexType)
+	if err != nil {
+		return nil, "", errors.Wrap(err, "failed to fetch from sync service")
+	}
+
+	// 3. Save to cache asynchronously
+	go func() {
+		_ = r.saveToCache(context.Background(), companyID, indexType, info)
+	}()
+
+	// 4. Create client
+	client, err := r.createClient(info)
+	return client, info.IndexName, err
+}
+
+// ResolveRaw resolves cluster info without creating client.
+// Useful when you need just the cluster name and index.
+func (r *Resolver) ResolveRaw(ctx context.Context, companyID, indexType string) (*ClusterInfo, error) {
+	if companyID == "" {
+		return nil, errors.New("company ID is required")
+	}
+	if indexType == "" {
+		return nil, errors.New("index type is required")
+	}
+
+	// Try cache first
+	info, err := r.getFromCache(ctx, companyID, indexType)
+	if err == nil && info != nil {
+		return info, nil
+	}
+
+	// Fetch from sync
+	info, err = r.fetchFromSync(ctx, companyID, indexType)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache asynchronously
+	go func() {
+		_ = r.saveToCache(context.Background(), companyID, indexType, info)
+	}()
+
+	return info, nil
+}
+
+// getFromCache retrieves cluster info from Redis.
+func (r *Resolver) getFromCache(ctx context.Context, companyID, indexType string) (*ClusterInfo, error) {
+	key := fmt.Sprintf("es_settings_%s_%s", companyID, indexType)
+
+	val, err := r.redis.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, errors.New("cache miss")
+		}
+		return nil, errors.Wrap(err, "redis get failed")
+	}
+
+	var info ClusterInfo
+	if err := json.Unmarshal([]byte(val), &info); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal cached info")
+	}
+
+	return &info, nil
+}
+
+// saveToCache saves cluster info to Redis.
+func (r *Resolver) saveToCache(ctx context.Context, companyID, indexType string, info *ClusterInfo) error {
+	key := fmt.Sprintf("es_settings_%s_%s", companyID, indexType)
+
+	data, err := json.Marshal(info)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal info")
+	}
+
+	if err := r.redis.Set(ctx, key, data, r.cacheTTL).Err(); err != nil {
+		return errors.Wrap(err, "redis set failed")
+	}
+
+	return nil
+}
+
+// fetchFromSync calls sync service to get cluster info.
+func (r *Resolver) fetchFromSync(ctx context.Context, companyID, indexType string) (*ClusterInfo, error) {
+	url := fmt.Sprintf("%s/v1/company/refresh-es-info-cache", r.syncURL)
+
+	reqBody := map[string]string{
+		"company_id": companyID,
+		"type":       indexType,
+	}
+
+	bodyReader, err := jsonBody(reqBody)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create request body")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bodyReader)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create HTTP request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "HTTP request to sync service failed")
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("sync service returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var info ClusterInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, errors.Wrap(err, "failed to decode sync response")
+	}
+
+	return &info, nil
+}
+
+// createClient creates typed client from cluster info.
+func (r *Resolver) createClient(info *ClusterInfo) (*Client, error) {
+	entry, err := r.registry.GetEntry(info.ClusterName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "cluster %q not found in registry", info.ClusterName)
+	}
+
+	baseURL, err := parseBaseURL(entry.BaseURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse base URL")
+	}
+
+	return &Client{
+		es:      entry.ES,
+		baseURL: baseURL,
+	}, nil
+}
+
+// InvalidateCache removes cached cluster info for company and index type.
+func (r *Resolver) InvalidateCache(ctx context.Context, companyID, indexType string) error {
+	key := fmt.Sprintf("es_settings_%s_%s", companyID, indexType)
+	return r.redis.Del(ctx, key).Err()
+}
+
+// InvalidateCompanyCache removes all cached cluster info for a company.
+func (r *Resolver) InvalidateCompanyCache(ctx context.Context, companyID string) error {
+	pattern := fmt.Sprintf("es_settings_%s_*", companyID)
+
+	iter := r.redis.Scan(ctx, 0, pattern, 0).Iterator()
+	for iter.Next(ctx) {
+		if err := r.redis.Del(ctx, iter.Val()).Err(); err != nil {
+			return errors.Wrapf(err, "failed to delete key %s", iter.Val())
+		}
+	}
+
+	return iter.Err()
 }
