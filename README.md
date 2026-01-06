@@ -423,18 +423,3 @@ resp, err := client.Search(ctx, &esclient.SearchRequest{
     Body:  queryBody,
 })
 ```
-
-## Benefits
-
-1. **No Code Duplication** - Remove duplicated cluster management from 4+ services
-2. **Single Config Source** - Cluster config in vault, sync service routes to tiers
-3. **Version Transparent** - No `switch` statements for v8/v9
-4. **Pre-created Clients** - Zero overhead on request path (just map lookup)
-5. **Caching** - Redis cache reduces load on sync service
-6. **Type Safety** - Typed requests/responses instead of `map[string]interface{}`
-7. **Easy Testing** - E2E tests with testcontainers
-8. **CI/CD Ready** - Tests run automatically without external dependencies
-
-## License
-
-Internal Billz library
