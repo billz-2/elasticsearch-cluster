@@ -91,9 +91,11 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 		return nil, "", errors.Wrap(err, "failed to fetch from sync service")
 	}
 
-	// 3. Save to cache asynchronously
+	// 3. Save to cache asynchronously with timeout
 	go func() {
-		_ = r.saveToCache(context.Background(), companyID, indexType, info)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = r.saveToCache(ctx, companyID, indexType, info)
 	}()
 
 	// 4. Create client
@@ -123,9 +125,11 @@ func (r *Resolver) ResolveRaw(ctx context.Context, companyID, indexType string) 
 		return nil, err
 	}
 
-	// Cache asynchronously
+	// Cache asynchronously with timeout
 	go func() {
-		_ = r.saveToCache(context.Background(), companyID, indexType, info)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = r.saveToCache(ctx, companyID, indexType, info)
 	}()
 
 	return info, nil
