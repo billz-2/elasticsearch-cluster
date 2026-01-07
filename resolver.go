@@ -21,11 +21,13 @@ type ClusterInfo struct {
 
 // Resolver resolves cluster and index for company using Redis cache and sync service.
 type Resolver struct {
-	registry   *Registry
-	redis      *redis.Client
-	syncURL    string
-	cacheTTL   time.Duration
-	httpClient *http.Client
+	registry      *Registry
+	redis         *redis.Client
+	syncURL       string
+	cacheTTL      time.Duration
+	httpClient    *http.Client
+	defaultClient *Client            // cached default client
+	clients       map[string]*Client // cached clients by cluster name
 }
 
 // ResolverConfig configures the resolver.
@@ -59,17 +61,49 @@ func NewResolver(cfg ResolverConfig) (*Resolver, error) {
 		}
 	}
 
+	// Pre-create all clients from registry
+	clusterNames := cfg.Registry.ListClusters()
+	clients := make(map[string]*Client, len(clusterNames))
+
+	for _, clusterName := range clusterNames {
+		entry, err := cfg.Registry.GetEntry(clusterName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get entry for cluster %q", clusterName)
+		}
+
+		baseURL, err := parseBaseURL(entry.BaseURL)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to parse base URL for cluster %q", clusterName)
+		}
+
+		clients[clusterName] = &Client{
+			es:      entry.ES,
+			baseURL: baseURL,
+		}
+	}
+
+	// Get default client
+	defaultEntry, err := cfg.Registry.GetEntry("")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get default cluster entry")
+	}
+	defaultClient := clients[defaultEntry.Name]
+
 	return &Resolver{
-		registry:   cfg.Registry,
-		redis:      cfg.Redis,
-		syncURL:    cfg.SyncURL,
-		cacheTTL:   cfg.CacheTTL,
-		httpClient: cfg.HTTPClient,
+		registry:      cfg.Registry,
+		redis:         cfg.Redis,
+		syncURL:       cfg.SyncURL,
+		cacheTTL:      cfg.CacheTTL,
+		httpClient:    cfg.HTTPClient,
+		defaultClient: defaultClient,
+		clients:       clients,
 	}, nil
 }
 
 // Resolve resolves cluster and index for company and index type.
 // Returns typed client and index name.
+// If sync service returns empty response (index not migrated yet),
+// returns default cluster client and index name in format: <indexType>_<companyID>
 func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*Client, string, error) {
 	if companyID == "" {
 		return nil, "", errors.New("company ID is required")
@@ -81,7 +115,7 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 	// 1. Try Redis cache
 	info, err := r.getFromCache(ctx, companyID, indexType)
 	if err == nil && info != nil {
-		client, err := r.createClient(info)
+		client, err := r.getClient(info.ClusterName)
 		return client, info.IndexName, err
 	}
 
@@ -91,20 +125,28 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 		return nil, "", errors.Wrap(err, "failed to fetch from sync service")
 	}
 
-	// 3. Save to cache asynchronously with timeout
+	// 3. If sync returned empty info, index not migrated yet - use default cluster
+	if info == nil || info.ClusterName == "" {
+		indexName := fmt.Sprintf("%s_%s", indexType, companyID)
+		return r.defaultClient, indexName, nil
+	}
+
+	// 4. Save to cache asynchronously with timeout
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		_ = r.saveToCache(ctx, companyID, indexType, info)
 	}()
 
-	// 4. Create client
-	client, err := r.createClient(info)
+	// 5. Get cached client
+	client, err := r.getClient(info.ClusterName)
 	return client, info.IndexName, err
 }
 
 // ResolveRaw resolves cluster info without creating client.
 // Useful when you need just the cluster name and index.
+// If sync service returns empty response (index not migrated yet),
+// returns default cluster info with index name in format: <indexType>_<companyID>
 func (r *Resolver) ResolveRaw(ctx context.Context, companyID, indexType string) (*ClusterInfo, error) {
 	if companyID == "" {
 		return nil, errors.New("company ID is required")
@@ -123,6 +165,19 @@ func (r *Resolver) ResolveRaw(ctx context.Context, companyID, indexType string) 
 	info, err = r.fetchFromSync(ctx, companyID, indexType)
 	if err != nil {
 		return nil, err
+	}
+
+	// If sync returned empty info, index not migrated yet - use default cluster
+	if info == nil || info.ClusterName == "" {
+		defaultEntry, err := r.registry.GetEntry("")
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get default cluster entry")
+		}
+		return &ClusterInfo{
+			ClusterName: defaultEntry.Name,
+			ClusterID:   0,
+			IndexName:   fmt.Sprintf("%s_%s", indexType, companyID),
+		}, nil
 	}
 
 	// Cache asynchronously with timeout
@@ -172,6 +227,7 @@ func (r *Resolver) saveToCache(ctx context.Context, companyID, indexType string,
 }
 
 // fetchFromSync calls sync service to get cluster info.
+// Returns nil info if sync returns empty response or error (index not migrated).
 func (r *Resolver) fetchFromSync(ctx context.Context, companyID, indexType string) (*ClusterInfo, error) {
 	url := fmt.Sprintf("%s/v1/company/refresh-es-info-cache", r.syncURL)
 
@@ -197,6 +253,11 @@ func (r *Resolver) fetchFromSync(ctx context.Context, companyID, indexType strin
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
+	// If sync service returns 400/404, it means index not migrated yet
+	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("sync service returned status %d: %s", resp.StatusCode, string(body))
@@ -207,25 +268,21 @@ func (r *Resolver) fetchFromSync(ctx context.Context, companyID, indexType strin
 		return nil, errors.Wrap(err, "failed to decode sync response")
 	}
 
+	// If cluster name is empty, sync returned empty response (not migrated yet)
+	if info.ClusterName == "" {
+		return nil, nil
+	}
+
 	return &info, nil
 }
 
-// createClient creates typed client from cluster info.
-func (r *Resolver) createClient(info *ClusterInfo) (*Client, error) {
-	entry, err := r.registry.GetEntry(info.ClusterName)
-	if err != nil {
-		return nil, errors.Wrapf(err, "cluster %q not found in registry", info.ClusterName)
+// getClient returns cached client from map by cluster name.
+func (r *Resolver) getClient(clusterName string) (*Client, error) {
+	client, ok := r.clients[clusterName]
+	if !ok {
+		return nil, errors.Errorf("cluster %q not found in clients map", clusterName)
 	}
-
-	baseURL, err := parseBaseURL(entry.BaseURL)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse base URL")
-	}
-
-	return &Client{
-		es:      entry.ES,
-		baseURL: baseURL,
-	}, nil
+	return client, nil
 }
 
 // InvalidateCache removes cached cluster info for company and index type.

@@ -3,6 +3,8 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -245,5 +247,162 @@ func TestRedisOperations(t *testing.T) {
 	t.Run("delete_nonexistent_key", func(t *testing.T) {
 		err := redisClient.Del(ctx, "nonexistent_key").Err()
 		require.NoError(t, err) // Delete of nonexistent key doesn't error
+	})
+}
+
+func TestResolverFallbackToDefault(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping E2E test in short mode")
+	}
+
+	t.Run("index_not_migrated_400_response", func(t *testing.T) {
+		// Mock sync service that returns 400 (index not migrated)
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error": "no settings found"}`))
+		}))
+		defer mockServer.Close()
+
+		resolver, err := esclient.NewResolver(esclient.ResolverConfig{
+			Registry: registry,
+			Redis:    redisClient,
+			SyncURL:  mockServer.URL,
+			CacheTTL: 1 * time.Minute,
+		})
+		require.NoError(t, err)
+
+		companyID := "test-company-uuid-123"
+		indexType := "products"
+
+		client, indexName, err := resolver.Resolve(ctx, companyID, indexType)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+
+		// Should return default client with index name: <indexType>_<companyID>
+		expectedIndexName := fmt.Sprintf("%s_%s", indexType, companyID)
+		assert.Equal(t, expectedIndexName, indexName)
+	})
+
+	t.Run("index_not_migrated_404_response", func(t *testing.T) {
+		// Mock sync service that returns 404 (index not migrated)
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer mockServer.Close()
+
+		resolver, err := esclient.NewResolver(esclient.ResolverConfig{
+			Registry: registry,
+			Redis:    redisClient,
+			SyncURL:  mockServer.URL,
+			CacheTTL: 1 * time.Minute,
+		})
+		require.NoError(t, err)
+
+		companyID := "test-company-uuid-456"
+		indexType := "orders"
+
+		client, indexName, err := resolver.Resolve(ctx, companyID, indexType)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+
+		// Should return default client with index name: <indexType>_<companyID>
+		expectedIndexName := fmt.Sprintf("%s_%s", indexType, companyID)
+		assert.Equal(t, expectedIndexName, indexName)
+	})
+
+	t.Run("index_migrated_success_response", func(t *testing.T) {
+		// Mock sync service that returns success (index migrated)
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			response := esclient.ClusterInfo{
+				ClusterName: "tier-gold",
+				ClusterID:   2,
+				IndexName:   "migrated_index_name",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(response)
+		}))
+		defer mockServer.Close()
+
+		resolver, err := esclient.NewResolver(esclient.ResolverConfig{
+			Registry: registry,
+			Redis:    redisClient,
+			SyncURL:  mockServer.URL,
+			CacheTTL: 1 * time.Minute,
+		})
+		require.NoError(t, err)
+
+		companyID := "test-company-uuid-789"
+		indexType := "products"
+
+		client, indexName, err := resolver.Resolve(ctx, companyID, indexType)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+
+		// Should return migrated index name from sync service
+		assert.Equal(t, "migrated_index_name", indexName)
+	})
+
+	t.Run("index_not_migrated_empty_cluster_name", func(t *testing.T) {
+		// Mock sync service that returns empty cluster name
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			response := esclient.ClusterInfo{
+				ClusterName: "",
+				ClusterID:   0,
+				IndexName:   "",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(response)
+		}))
+		defer mockServer.Close()
+
+		resolver, err := esclient.NewResolver(esclient.ResolverConfig{
+			Registry: registry,
+			Redis:    redisClient,
+			SyncURL:  mockServer.URL,
+			CacheTTL: 1 * time.Minute,
+		})
+		require.NoError(t, err)
+
+		companyID := "test-company-uuid-999"
+		indexType := "orders"
+
+		client, indexName, err := resolver.Resolve(ctx, companyID, indexType)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+
+		// Should return default client with index name: <indexType>_<companyID>
+		expectedIndexName := fmt.Sprintf("%s_%s", indexType, companyID)
+		assert.Equal(t, expectedIndexName, indexName)
+	})
+
+	t.Run("resolve_raw_index_not_migrated", func(t *testing.T) {
+		// Mock sync service that returns 400 (index not migrated)
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error": "no settings found"}`))
+		}))
+		defer mockServer.Close()
+
+		resolver, err := esclient.NewResolver(esclient.ResolverConfig{
+			Registry: registry,
+			Redis:    redisClient,
+			SyncURL:  mockServer.URL,
+			CacheTTL: 1 * time.Minute,
+		})
+		require.NoError(t, err)
+
+		companyID := "test-company-uuid-raw"
+		indexType := "products"
+
+		info, err := resolver.ResolveRaw(ctx, companyID, indexType)
+		require.NoError(t, err)
+		require.NotNil(t, info)
+
+		// Should return default cluster info with index name: <indexType>_<companyID>
+		expectedIndexName := fmt.Sprintf("%s_%s", indexType, companyID)
+		assert.Equal(t, expectedIndexName, info.IndexName)
+		assert.NotEmpty(t, info.ClusterName) // Should have default cluster name
 	})
 }
