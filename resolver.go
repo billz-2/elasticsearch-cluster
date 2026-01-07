@@ -114,7 +114,7 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 
 	// 1. Try Redis cache
 	info, err := r.getFromCache(ctx, companyID, indexType)
-	if err == nil && info != nil {
+	if err == nil && info != nil && info.ClusterName != "" {
 		client, err := r.getClient(info.ClusterName)
 		return client, info.IndexName, err
 	}
@@ -126,12 +126,13 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 	}
 
 	// 3. If sync returned empty info, index not migrated yet - use default cluster
+	// DON'T cache this - we want to check sync service again after migration
 	if info == nil || info.ClusterName == "" {
 		indexName := fmt.Sprintf("%s_%s", indexType, companyID)
 		return r.defaultClient, indexName, nil
 	}
 
-	// 4. Save to cache asynchronously with timeout
+	// 4. Save to cache asynchronously with timeout (only cache migrated indices)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -157,7 +158,7 @@ func (r *Resolver) ResolveRaw(ctx context.Context, companyID, indexType string) 
 
 	// Try cache first
 	info, err := r.getFromCache(ctx, companyID, indexType)
-	if err == nil && info != nil {
+	if err == nil && info != nil && info.ClusterName != "" {
 		return info, nil
 	}
 
@@ -168,6 +169,7 @@ func (r *Resolver) ResolveRaw(ctx context.Context, companyID, indexType string) 
 	}
 
 	// If sync returned empty info, index not migrated yet - use default cluster
+	// DON'T cache this - we want to check sync service again after migration
 	if info == nil || info.ClusterName == "" {
 		defaultEntry, err := r.registry.GetEntry("")
 		if err != nil {
@@ -180,7 +182,7 @@ func (r *Resolver) ResolveRaw(ctx context.Context, companyID, indexType string) 
 		}, nil
 	}
 
-	// Cache asynchronously with timeout
+	// Cache asynchronously with timeout (only cache migrated indices)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
