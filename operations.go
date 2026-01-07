@@ -323,6 +323,37 @@ func (c *Client) UpdateByQuery(ctx context.Context, req *UpdateByQueryRequest) (
 	return &resp, nil
 }
 
+// CreateDocument creates or updates a document with specific ID.
+func (c *Client) CreateDocument(ctx context.Context, req *CreateDocumentRequest) (*CreateDocumentResponse, error) {
+	if req.Index == "" {
+		return nil, errors.New("index name is required")
+	}
+	if req.DocumentID == "" {
+		return nil, errors.New("document ID is required")
+	}
+
+	path := fmt.Sprintf("/%s/_doc/%s", req.Index, req.DocumentID)
+	u := newURL(c.baseURL, path, nil)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), req.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create document request")
+	}
+	contentTypeJSON(httpReq)
+
+	var resp CreateDocumentResponse
+	status, err := doJSON(ctx, c.es, httpReq, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	if status != http.StatusOK && status != http.StatusCreated {
+		return nil, fmt.Errorf("create document failed with status %d", status)
+	}
+
+	return &resp, nil
+}
+
 // RawRequest executes raw HTTP request (for custom operations).
 func (c *Client) RawRequest(ctx context.Context, method, path string, body interface{}) (int, map[string]interface{}, error) {
 	var bodyReader interface{}

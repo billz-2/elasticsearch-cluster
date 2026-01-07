@@ -109,3 +109,23 @@ type UpdateByQueryResponse struct {
 	VersionConflicts int                      `json:"version_conflicts"`
 	Failures         []map[string]interface{} `json:"failures"`
 }
+
+// CreateDocumentRequest represents create document request.
+type CreateDocumentRequest struct {
+	Index      string    // Index name
+	DocumentID string    // Document ID
+	Body       io.Reader // Document body (JSON)
+}
+
+// CreateDocumentResponse represents create document response.
+type CreateDocumentResponse struct {
+	Index   string `json:"_index"`
+	ID      string `json:"_id"`
+	Version int    `json:"_version"`
+	Result  string `json:"result"` // "created" or "updated"
+	Shards  struct {
+		Total      int `json:"total"`
+		Successful int `json:"successful"`
+		Failed     int `json:"failed"`
+	} `json:"_shards"`
+}

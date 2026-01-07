@@ -259,7 +259,7 @@ func TestResolverFallbackToDefault(t *testing.T) {
 		// Mock sync service that returns 400 (index not migrated)
 		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error": "no settings found"}`))
+			_, _ = w.Write([]byte(`{"error": "no settings found"}`))
 		}))
 		defer mockServer.Close()
 
@@ -320,7 +320,7 @@ func TestResolverFallbackToDefault(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 		}))
 		defer mockServer.Close()
 
@@ -353,7 +353,7 @@ func TestResolverFallbackToDefault(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 		}))
 		defer mockServer.Close()
 
@@ -381,7 +381,7 @@ func TestResolverFallbackToDefault(t *testing.T) {
 		// Mock sync service that returns 400 (index not migrated)
 		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error": "no settings found"}`))
+			_, _ = w.Write([]byte(`{"error": "no settings found"}`))
 		}))
 		defer mockServer.Close()
 
