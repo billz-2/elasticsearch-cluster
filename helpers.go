@@ -31,6 +31,10 @@ func doJSON(ctx context.Context, c ESClient, req *http.Request, out interface{})
 		return status, errors.Wrap(err, "failed to read response body")
 	}
 
+	if status >= http.StatusMultipleChoices {
+		return status, nil
+	}
+
 	if err := json.Unmarshal(bodyBytes, out); err != nil {
 		return status, errors.Wrapf(err, "failed to decode JSON response (status %d)", status)
 	}

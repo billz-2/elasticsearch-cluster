@@ -15,10 +15,11 @@ type SearchRequest struct {
 
 // SearchResponse represents Elasticsearch search response.
 type SearchResponse struct {
-	Took     int                    `json:"took"`
-	TimedOut bool                   `json:"timed_out"`
-	Shards   map[string]interface{} `json:"_shards"`
-	Hits     struct {
+	Took         int                    `json:"took"`
+	TimedOut     bool                   `json:"timed_out"`
+	Shards       map[string]interface{} `json:"_shards"`
+	Aggregations map[string]interface{} `json:"aggregations,omitempty"`
+	Hits         struct {
 		Total struct {
 			Value    int    `json:"value"`
 			Relation string `json:"relation"`

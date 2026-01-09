@@ -29,3 +29,15 @@ func ErrClusterNotFound(clusterName string) error {
 func ErrInvalidBaseURL(clusterName, address string) error {
 	return fmt.Errorf("cluster %q has invalid base URL %q (must be absolute URL)", clusterName, address)
 }
+
+type StatusError struct {
+	Op         string
+	StatusCode int
+}
+
+func (e *StatusError) Error() string {
+	if e.Op == "" {
+		return fmt.Sprintf("elasticsearch returned status %d", e.StatusCode)
+	}
+	return fmt.Sprintf("%s returned status code %d", e.Op, e.StatusCode)
+}

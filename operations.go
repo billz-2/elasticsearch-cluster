@@ -64,7 +64,7 @@ func (c *Client) Search(ctx context.Context, req *SearchRequest) (*SearchRespons
 	}
 
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("search failed with status %d", status)
+		return nil, &StatusError{Op: "search", StatusCode: status}
 	}
 
 	return &resp, nil
@@ -96,7 +96,7 @@ func (c *Client) OpenPIT(ctx context.Context, req *OpenPITRequest) (*PIT, error)
 	}
 
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("open PIT failed with status %d", status)
+		return nil, &StatusError{Op: "open_pit", StatusCode: status}
 	}
 
 	return &pit, nil
@@ -129,7 +129,7 @@ func (c *Client) ClosePIT(ctx context.Context, pitID string) error {
 	}
 
 	if status != http.StatusOK {
-		return fmt.Errorf("close PIT failed with status %d", status)
+		return &StatusError{Op: "close_pit", StatusCode: status}
 	}
 
 	return nil
@@ -156,9 +156,8 @@ func (c *Client) Bulk(ctx context.Context, req *BulkRequest) (*BulkResponse, err
 	}
 
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("bulk failed with status %d", status)
+		return nil, &StatusError{Op: "bulk", StatusCode: status}
 	}
-
 	return &resp, nil
 }
 
@@ -184,7 +183,7 @@ func (c *Client) DeleteByQuery(ctx context.Context, req *DeleteByQueryRequest) (
 	}
 
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("delete by query failed with status %d", status)
+		return nil, &StatusError{Op: "delete_by_query", StatusCode: status}
 	}
 
 	return &resp, nil
@@ -211,7 +210,7 @@ func (c *Client) CreateIndex(ctx context.Context, req *CreateIndexRequest) error
 	}
 
 	if status != http.StatusOK && status != http.StatusCreated {
-		return fmt.Errorf("create index failed with status %d", status)
+		return &StatusError{Op: "create_index", StatusCode: status}
 	}
 
 	return nil
@@ -237,7 +236,7 @@ func (c *Client) DeleteIndex(ctx context.Context, indexName string) error {
 	}
 
 	if status != http.StatusOK {
-		return fmt.Errorf("delete index failed with status %d", status)
+		return &StatusError{Op: "delete_index", StatusCode: status}
 	}
 
 	return nil
@@ -289,7 +288,7 @@ func (c *Client) Count(ctx context.Context, req *CountRequest) (*CountResponse, 
 	}
 
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("count failed with status %d", status)
+		return nil, &StatusError{Op: "count", StatusCode: status}
 	}
 
 	return &resp, nil
@@ -317,7 +316,7 @@ func (c *Client) UpdateByQuery(ctx context.Context, req *UpdateByQueryRequest) (
 	}
 
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("update by query failed with status %d", status)
+		return nil, &StatusError{Op: "update_by_query", StatusCode: status}
 	}
 
 	return &resp, nil
@@ -346,9 +345,8 @@ func (c *Client) CreateDocument(ctx context.Context, req *CreateDocumentRequest)
 	if err != nil {
 		return nil, err
 	}
-
 	if status != http.StatusOK && status != http.StatusCreated {
-		return nil, fmt.Errorf("create document failed with status %d", status)
+		return nil, &StatusError{Op: "create_document", StatusCode: status}
 	}
 
 	return &resp, nil
