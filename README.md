@@ -49,6 +49,33 @@ Universal Elasticsearch client library for Billz microservices with multi-cluste
 go get github.com/billz-2/elasticsearch-cluster
 ```
 
+## Publishing New Version
+
+### Official Release (from master)
+
+1. Merge staging → master
+2. Checkout master and create release:
+   ```bash
+   make release VERSION=v0.0.29
+   ```
+3. Wait up to 30 minutes for Go proxy to update
+4. Update in microservices: `go get -u github.com/billz-2/elasticsearch-cluster@v0.0.29`
+
+### Development/Testing Tags (from feature branch)
+
+If you need to test changes before merging to master:
+
+```bash
+# From your feature branch
+git tag -a v0.0.29-dev -m "v0.0.29-dev: testing new feature"
+git push origin v0.0.29-dev
+
+# In microservice, test with:
+go get github.com/billz-2/elasticsearch-cluster@v0.0.29-dev
+```
+
+**Note:** Use semantic versioning with suffixes for non-release tags (e.g., `-dev`, `-alpha`, `-beta`)
+
 ## Quick Commands
 
 ```bash
