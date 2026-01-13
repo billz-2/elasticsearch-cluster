@@ -142,6 +142,15 @@ release:
 		echo "Hint: Merge staging to master first, then checkout master"; \
 		exit 1; \
 	fi; \
+	if git rev-parse $(VERSION) >/dev/null 2>&1; then \
+		echo "Error: Tag $(VERSION) already exists."; \
+		echo ""; \
+		echo "To create a new version, use a different version number."; \
+		echo "To recreate this tag (not recommended for published versions):"; \
+		echo "  git tag -d $(VERSION)"; \
+		echo "  git push origin :refs/tags/$(VERSION)"; \
+		exit 1; \
+	fi; \
 	echo "Creating release $(VERSION) from master..."; \
 	git tag -a $(VERSION) -m "$(VERSION)"; \
 	git push origin $(VERSION); \
