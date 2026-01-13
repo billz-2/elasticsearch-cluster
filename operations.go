@@ -142,7 +142,10 @@ func (c *Client) Bulk(ctx context.Context, req *BulkRequest) (*BulkResponse, err
 		path = fmt.Sprintf("/%s/_bulk", req.Index)
 	}
 
-	u := newURL(c.baseURL, path, nil)
+	query := url.Values{
+		"refresh": []string{"wait_for"},
+	}
+	u := newURL(c.baseURL, path, query)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), req.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create bulk request")
