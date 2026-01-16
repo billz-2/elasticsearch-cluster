@@ -28,6 +28,7 @@ type Resolver struct {
 	httpClient    *http.Client
 	defaultClient *Client            // cached default client
 	clients       map[string]*Client // cached clients by cluster name
+	log           Logger             // logger for debugging
 }
 
 // ResolverConfig configures the resolver.
@@ -37,6 +38,7 @@ type ResolverConfig struct {
 	SyncURL    string        // Sync service URL (e.g., "http://sync-service:8080")
 	CacheTTL   time.Duration // Cache TTL (default: 24h)
 	HTTPClient *http.Client  // HTTP client for sync calls (optional)
+	Logger     Logger        // Logger for debugging (optional)
 }
 
 // NewResolver creates a new resolver with Redis caching.
@@ -97,6 +99,7 @@ func NewResolver(cfg ResolverConfig) (*Resolver, error) {
 		httpClient:    cfg.HTTPClient,
 		defaultClient: defaultClient,
 		clients:       clients,
+		log:           safeLogger(cfg.Logger),
 	}, nil
 }
 
@@ -112,12 +115,23 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 		return nil, "", errors.New("index type is required")
 	}
 
+	r.log.DebugWithCtx(ctx, "elasticsearch resolver resolve", map[string]interface{}{
+		"company_id": companyID,
+		"index_type": indexType,
+	})
+
 	// 1. Try Redis cache
 	info, err := r.getFromCache(ctx, companyID, indexType)
 	if err == nil && info != nil && info.ClusterName != "" {
+		r.log.DebugWithCtx(ctx, "elasticsearch resolver cache hit", map[string]interface{}{
+			"cluster_name": info.ClusterName,
+			"index_name":   info.IndexName,
+		})
 		client, err := r.getClient(info.ClusterName)
 		return client, info.IndexName, err
 	}
+
+	r.log.DebugWithCtx(ctx, "elasticsearch resolver cache miss", nil)
 
 	// 2. Fetch from sync service
 	info, err = r.fetchFromSync(ctx, companyID, indexType)
@@ -129,8 +143,16 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 	// DON'T cache this - we want to check sync service again after migration
 	if info == nil || info.ClusterName == "" {
 		indexName := fmt.Sprintf("%s_%s", indexType, companyID)
+		r.log.DebugWithCtx(ctx, "elasticsearch resolver using default cluster (not migrated)", map[string]interface{}{
+			"index_name": indexName,
+		})
 		return r.defaultClient, indexName, nil
 	}
+
+	r.log.DebugWithCtx(ctx, "elasticsearch resolver resolved from sync", map[string]interface{}{
+		"cluster_name": info.ClusterName,
+		"index_name":   info.IndexName,
+	})
 
 	// 4. Save to cache asynchronously with timeout (only cache migrated indices)
 	go func() {

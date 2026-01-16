@@ -20,6 +20,7 @@ type ESClient interface {
 type esAdapter struct {
 	perform func(req *http.Request) (*http.Response, error)
 	baseURL *url.URL
+	log     Logger
 }
 
 // Do executes HTTP request with context, resolving relative URLs to absolute.
@@ -39,21 +40,49 @@ func (ea *esAdapter) Do(ctx context.Context, req *http.Request) (*http.Response,
 		r.URL = &u
 	}
 
-	return ea.perform(r)
+	ea.log.DebugWithCtx(ctx, "elasticsearch request", map[string]interface{}{
+		"method": r.Method,
+		"path":   r.URL.Path,
+		"host":   r.URL.Host,
+	})
+
+	resp, err := ea.perform(r)
+	if err != nil {
+		return nil, err
+	}
+
+	ea.log.DebugWithCtx(ctx, "elasticsearch response", map[string]interface{}{
+		"status_code": resp.StatusCode,
+		"path":        r.URL.Path,
+	})
+
+	return resp, nil
 }
 
 // NewESClientV8 creates ESClient from Elasticsearch v8 client.
 func NewESClientV8(c *elasticV8.Client, baseURL *url.URL) ESClient {
+	return NewESClientV8WithLogger(c, baseURL, nil)
+}
+
+// NewESClientV8WithLogger creates ESClient from Elasticsearch v8 client with logger.
+func NewESClientV8WithLogger(c *elasticV8.Client, baseURL *url.URL, log Logger) ESClient {
 	return &esAdapter{
 		perform: c.Transport.Perform,
 		baseURL: baseURL,
+		log:     safeLogger(log),
 	}
 }
 
 // NewESClientV9 creates ESClient from Elasticsearch v9 client.
 func NewESClientV9(c *elasticV9.Client, baseURL *url.URL) ESClient {
+	return NewESClientV9WithLogger(c, baseURL, nil)
+}
+
+// NewESClientV9WithLogger creates ESClient from Elasticsearch v9 client with logger.
+func NewESClientV9WithLogger(c *elasticV9.Client, baseURL *url.URL, log Logger) ESClient {
 	return &esAdapter{
 		perform: c.Transport.Perform,
 		baseURL: baseURL,
+		log:     safeLogger(log),
 	}
 }
