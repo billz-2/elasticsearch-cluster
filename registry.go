@@ -37,10 +37,17 @@ func NewRegistry(defaultName string) *Registry {
 // NewRegistryFromConfig creates registry from configuration.
 // All ES clients are created during initialization (one-time setup).
 func NewRegistryFromConfig(cfg *Config) (*Registry, error) {
+	return NewRegistryFromConfigWithLogger(cfg, nil)
+}
+
+// NewRegistryFromConfigWithLogger creates registry from configuration with logger.
+// All ES clients are created during initialization (one-time setup).
+func NewRegistryFromConfigWithLogger(cfg *Config, log Logger) (*Registry, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, errors.Wrap(err, "invalid config")
 	}
 
+	log = safeLogger(log)
 	reg := NewRegistry(cfg.DefaultCluster)
 
 	for name, clusterCfg := range cfg.Clusters {
@@ -64,7 +71,7 @@ func NewRegistryFromConfig(cfg *Config) (*Registry, error) {
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to create ES v9 client for %q", name)
 			}
-			client = NewESClientV9(cl, u)
+			client = NewESClientV9WithLogger(cl, u, log)
 
 		case 8:
 			cl, err := elasticV8.NewClient(elasticV8.Config{
@@ -75,7 +82,7 @@ func NewRegistryFromConfig(cfg *Config) (*Registry, error) {
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to create ES v8 client for %q", name)
 			}
-			client = NewESClientV8(cl, u)
+			client = NewESClientV8WithLogger(cl, u, log)
 
 		default:
 			// This should never happen after Validate()
