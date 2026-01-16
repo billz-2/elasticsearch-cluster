@@ -142,7 +142,7 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 	// 3. If sync returned empty info, index not migrated yet - use default cluster
 	// DON'T cache this - we want to check sync service again after migration
 	if info == nil || info.ClusterName == "" {
-		indexName := fmt.Sprintf("%s_%s", indexType, companyID)
+		indexName := fmt.Sprintf("%s%s", indexType, companyID)
 		r.log.DebugWithCtx(ctx, "elasticsearch resolver using default cluster (not migrated)", map[string]interface{}{
 			"index_name": indexName,
 		})
