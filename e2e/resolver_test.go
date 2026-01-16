@@ -299,7 +299,7 @@ func TestResolverFallbackToDefault(t *testing.T) {
 		require.NoError(t, err)
 
 		companyID := "test-company-uuid-456"
-		indexType := "orders"
+		indexType := "products"
 
 		client, indexName, err := resolver.Resolve(ctx, companyID, indexType)
 		require.NoError(t, err)
@@ -366,7 +366,7 @@ func TestResolverFallbackToDefault(t *testing.T) {
 		require.NoError(t, err)
 
 		companyID := "test-company-uuid-999"
-		indexType := "orders"
+		indexType := "products"
 
 		client, indexName, err := resolver.Resolve(ctx, companyID, indexType)
 		require.NoError(t, err)
