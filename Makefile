@@ -128,3 +128,25 @@ example-multicluster:
 example-resolver:
 	@echo "Running resolver example..."
 	@cd examples/with_resolver && go run main.go
+
+## release: Create and push a new release tag (must be on master branch)
+release:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION is required."; \
+		echo "Usage: make release VERSION=v0.0.29"; \
+		exit 1; \
+	fi; \
+	CURRENT_BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$CURRENT_BRANCH" != "master" ]; then \
+		echo "Error: Must be on master branch. Current branch: $$CURRENT_BRANCH"; \
+		echo "Hint: Merge staging to master first, then checkout master"; \
+		exit 1; \
+	fi; \
+	echo "Creating release $(VERSION) from master..."; \
+	git tag -a $(VERSION) -m "$(VERSION)"; \
+	git push origin $(VERSION); \
+	echo "✓ Release $(VERSION) created and pushed!"; \
+	echo ""; \
+	echo "Next steps:"; \
+	echo "  1. Wait up to 30 minutes for Go proxy to update"; \
+	echo "  2. Update in microservices: go get -u github.com/billz-2/elasticsearch-cluster@$(VERSION)"

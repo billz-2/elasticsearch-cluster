@@ -49,6 +49,33 @@ Universal Elasticsearch client library for Billz microservices with multi-cluste
 go get github.com/billz-2/elasticsearch-cluster
 ```
 
+## Publishing New Version
+
+### Official Release (from master)
+
+1. Merge staging → master
+2. Checkout master and create release:
+   ```bash
+   make release VERSION=v0.0.29
+   ```
+3. Wait up to 30 minutes for Go proxy to update
+4. Update in microservices: `go get -u github.com/billz-2/elasticsearch-cluster@v0.0.29`
+
+### Development/Testing Tags (from feature branch)
+
+If you need to test changes before merging to master:
+
+```bash
+# From your feature branch
+git tag -a v0.0.29-dev -m "v0.0.29-dev: testing new feature"
+git push origin v0.0.29-dev
+
+# In microservice, test with:
+go get github.com/billz-2/elasticsearch-cluster@v0.0.29-dev
+```
+
+**Note:** Use semantic versioning with suffixes for non-release tags (e.g., `-dev`, `-alpha`, `-beta`)
+
 ## Quick Commands
 
 ```bash
@@ -220,6 +247,99 @@ resp, err := client.Search(ctx, &esclient.SearchRequest{
     Index: "orders_tier_gold",
     Body:  queryBody,
 })
+```
+
+## Debug Logging
+
+The library supports optional debug logging to trace Elasticsearch requests and resolver decisions. This is especially useful for debugging routing issues in microservices.
+
+### Features
+
+- **No-op by default**: If logger is not provided, all logging is disabled (zero overhead)
+- **Compatible with billz logger**: Works with `github.com/billz-2/packages/pkg/logger`
+- **Debug-only**: Logs only Debug level (no errors - errors are returned as usual)
+- **Safe for nil**: All logging calls are safe when logger is nil
+
+### Usage with Logger
+
+```go
+import (
+    esclient "github.com/billz-2/elasticsearch-cluster"
+    "github.com/billz-2/packages/pkg/logger"
+)
+
+// Initialize logger
+log := logger.New(logger.LevelDebug, "billz_catalog_service_v2")
+
+// Create registry with logger
+registry, err := esclient.NewRegistryFromConfigWithLogger(config, log)
+if err != nil {
+    log.Fatal("failed to create ES registry", logger.Error(err))
+}
+
+// Create resolver with logger
+resolver, err := esclient.NewResolver(esclient.ResolverConfig{
+    Registry: registry,
+    Redis:    redisClient,
+    SyncURL:  "http://sync-service:8080",
+    CacheTTL: 24 * time.Hour,
+    Logger:   log,  // Pass logger here
+})
+```
+
+### What Gets Logged
+
+The library logs:
+
+1. **Resolver decisions**:
+   - Cache hits/misses
+   - Sync service calls
+   - Default cluster fallback (for non-migrated indices)
+
+2. **Low-level HTTP requests**:
+   - Method, path, host
+   - Response status codes
+
+### Example Logs
+
+```
+[DEBUG] [trace:abc123] elasticsearch resolver resolve company_id=comp_001 index_type=products
+[DEBUG] [trace:abc123] elasticsearch resolver cache miss
+[DEBUG] [trace:abc123] elasticsearch resolver resolved from sync cluster_name=tier-gold index_name=products_tier_gold_comp_001
+[DEBUG] [trace:abc123] elasticsearch request method=POST path=/products_tier_gold_comp_001/_search host=es-gold-1:9200
+[DEBUG] [trace:abc123] elasticsearch response status_code=200 path=/products_tier_gold_comp_001/_search
+```
+
+### Logger Interface
+
+The library uses a minimal logger interface compatible with billz services:
+
+```go
+type Logger interface {
+    Debug(msg string, fields ...Field)
+    DebugWithCtx(ctx context.Context, msg string, fields ...Field)
+}
+
+type Field interface{}  // Compatible with zapcore.Field
+```
+
+### Custom Logger Example
+
+```go
+type MyLogger struct{}
+
+func (l *MyLogger) Debug(msg string, fields ...interface{}) {
+    fmt.Printf("[DEBUG] %s %+v\n", msg, fields)
+}
+
+func (l *MyLogger) DebugWithCtx(ctx context.Context, msg string, fields ...interface{}) {
+    traceID := ctx.Value("trace_id")
+    fmt.Printf("[DEBUG] [trace:%v] %s %+v\n", traceID, msg, fields)
+}
+
+// Use custom logger
+log := &MyLogger{}
+registry, _ := esclient.NewRegistryFromConfigWithLogger(config, log)
 ```
 
 ## API Reference
