@@ -29,8 +29,7 @@ type Resolver struct {
 	defaultClient  *Client            // cached default client
 	clients        map[string]*Client // cached clients by cluster name
 	log            Logger             // logger for debugging
-	indexTypeMap   map[string]string  // mapping: incoming indexType -> DB indexType
-	indexPrefixMap map[string]string  // mapping: DB indexType -> index name prefix
+	indexPrefixMap map[string]string  // mapping: indexType -> index name prefix
 }
 
 // ResolverConfig configures the resolver.
@@ -41,8 +40,7 @@ type ResolverConfig struct {
 	CacheTTL       time.Duration     // Cache TTL (default: 24h)
 	HTTPClient     *http.Client      // HTTP client for sync calls (optional)
 	Logger         Logger            // Logger for debugging (optional)
-	IndexTypeMap   map[string]string // Optional custom mapping: incoming indexType -> DB indexType
-	IndexPrefixMap map[string]string // Optional custom mapping: DB indexType -> index name prefix
+	IndexPrefixMap map[string]string // Optional custom mapping: indexType -> index name prefix
 }
 
 // NewResolver creates a new resolver with Redis caching.
@@ -64,16 +62,6 @@ func NewResolver(cfg ResolverConfig) (*Resolver, error) {
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = &http.Client{
 			Timeout: 5 * time.Second,
-		}
-	}
-
-	// Set default index type mapping if not provided
-	indexTypeMap := cfg.IndexTypeMap
-	if indexTypeMap == nil {
-		indexTypeMap = map[string]string{
-			"product_tree": "product_tree",
-			"products":     "product_tree",
-			"products_":    "product_tree",
 		}
 	}
 
@@ -122,27 +110,17 @@ func NewResolver(cfg ResolverConfig) (*Resolver, error) {
 		defaultClient:  defaultClient,
 		clients:        clients,
 		log:            safeLogger(cfg.Logger),
-		indexTypeMap:   indexTypeMap,
 		indexPrefixMap: indexPrefixMap,
 	}, nil
 }
 
-// normalizeIndexType converts incoming indexType to DB indexType using the map.
-// If no mapping found, returns the original value.
-func (r *Resolver) normalizeIndexType(indexType string) string {
-	if normalized, ok := r.indexTypeMap[indexType]; ok {
-		return normalized
-	}
-	return indexType
-}
-
-// getIndexPrefix returns the index name prefix for a normalized DB indexType.
+// getIndexPrefix returns the index name prefix for indexType.
 // If no mapping found, returns the indexType itself with underscore.
-func (r *Resolver) getIndexPrefix(normalizedType string) string {
-	if prefix, ok := r.indexPrefixMap[normalizedType]; ok {
+func (r *Resolver) getIndexPrefix(indexType string) string {
+	if prefix, ok := r.indexPrefixMap[indexType]; ok {
 		return prefix
 	}
-	return normalizedType + "_"
+	return indexType + "_"
 }
 
 // Resolve resolves cluster and index for company and index type.
@@ -157,17 +135,13 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 		return nil, "", errors.New("index type is required")
 	}
 
-	// Normalize indexType for DB lookup
-	normalizedType := r.normalizeIndexType(indexType)
-
 	r.log.DebugWithCtx(ctx, "elasticsearch resolver resolve", map[string]interface{}{
-		"company_id":      companyID,
-		"index_type":      indexType,
-		"normalized_type": normalizedType,
+		"company_id": companyID,
+		"index_type": indexType,
 	})
 
 	// 1. Try Redis cache
-	info, err := r.getFromCache(ctx, companyID, normalizedType)
+	info, err := r.getFromCache(ctx, companyID, indexType)
 	if err == nil && info != nil && info.ClusterName != "" {
 		r.log.DebugWithCtx(ctx, "elasticsearch resolver cache hit", map[string]interface{}{
 			"cluster_name": info.ClusterName,
@@ -180,7 +154,7 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 	r.log.DebugWithCtx(ctx, "elasticsearch resolver cache miss", nil)
 
 	// 2. Fetch from sync service
-	info, err = r.fetchFromSync(ctx, companyID, normalizedType)
+	info, err = r.fetchFromSync(ctx, companyID, indexType)
 	if err != nil {
 		return nil, "", errors.Wrap(err, "failed to fetch from sync service")
 	}
@@ -188,7 +162,7 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 	// 3. If sync returned empty info, index not migrated yet - use default cluster
 	// DON'T cache this - we want to check sync service again after migration
 	if info == nil || info.ClusterName == "" {
-		prefix := r.getIndexPrefix(normalizedType)
+		prefix := r.getIndexPrefix(indexType)
 		indexName := fmt.Sprintf("%s%s", prefix, companyID)
 		r.log.DebugWithCtx(ctx, "elasticsearch resolver using default cluster (not migrated)", map[string]interface{}{
 			"index_name": indexName,
@@ -205,7 +179,7 @@ func (r *Resolver) Resolve(ctx context.Context, companyID, indexType string) (*C
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		_ = r.saveToCache(ctx, companyID, normalizedType, info)
+		_ = r.saveToCache(ctx, companyID, indexType, info)
 	}()
 
 	// 5. Get cached client
@@ -225,17 +199,14 @@ func (r *Resolver) ResolveRaw(ctx context.Context, companyID, indexType string) 
 		return nil, errors.New("index type is required")
 	}
 
-	// Normalize indexType for DB lookup
-	normalizedType := r.normalizeIndexType(indexType)
-
 	// Try cache first
-	info, err := r.getFromCache(ctx, companyID, normalizedType)
+	info, err := r.getFromCache(ctx, companyID, indexType)
 	if err == nil && info != nil && info.ClusterName != "" {
 		return info, nil
 	}
 
 	// Fetch from sync
-	info, err = r.fetchFromSync(ctx, companyID, normalizedType)
+	info, err = r.fetchFromSync(ctx, companyID, indexType)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +218,7 @@ func (r *Resolver) ResolveRaw(ctx context.Context, companyID, indexType string) 
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get default cluster entry")
 		}
-		prefix := r.getIndexPrefix(normalizedType)
+		prefix := r.getIndexPrefix(indexType)
 		return &ClusterInfo{
 			ClusterName: defaultEntry.Name,
 			ClusterID:   0,
@@ -259,7 +230,7 @@ func (r *Resolver) ResolveRaw(ctx context.Context, companyID, indexType string) 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		_ = r.saveToCache(ctx, companyID, normalizedType, info)
+		_ = r.saveToCache(ctx, companyID, indexType, info)
 	}()
 
 	return info, nil
@@ -362,8 +333,7 @@ func (r *Resolver) getClient(clusterName string) (*Client, error) {
 
 // InvalidateCache removes cached cluster info for company and index type.
 func (r *Resolver) InvalidateCache(ctx context.Context, companyID, indexType string) error {
-	normalizedType := r.normalizeIndexType(indexType)
-	key := fmt.Sprintf("es_settings_%s_%s", companyID, normalizedType)
+	key := fmt.Sprintf("es_settings_%s_%s", companyID, indexType)
 	return r.redis.Del(ctx, key).Err()
 }
 
