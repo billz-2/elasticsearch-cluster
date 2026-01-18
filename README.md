@@ -188,27 +188,24 @@ func SearchOrders(ctx context.Context, resolver *esclient.Resolver, companyID st
         return nil, err
     }
 
-    // Build search query
-    query, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-        "query": map[string]interface{}{
-            "bool": map[string]interface{}{
-                "must": []interface{}{
-                    map[string]interface{}{"term": map[string]string{"company_id": companyID}},
-                    map[string]interface{}{"range": map[string]interface{}{
-                        "created_at": map[string]string{"gte": "now-7d"},
-                    }},
-                },
+    // Build search query (structured map, not bytes)
+    query := map[string]any{
+        "query": map[string]any{
+            "range": map[string]any{
+                "created_at": map[string]any{"gte": "now-7d"},
             },
         },
-        "sort": []map[string]string{{"created_at": "desc"}},
-    })
+        "sort": []map[string]any{{"created_at": map[string]any{"order": "desc"}}},
+    }
 
     // Execute search
+    // company_id filter is automatically injected for shared indices
     size := 100
     resp, err := client.Search(ctx, &esclient.SearchRequest{
-        Index: indexName,
-        Body:  query,
-        Size:  &size,
+        Index:              indexName,
+        Query:              query,
+        CompanyID:          companyID,  // Required for shared indices
+        Size:               &size,
         WithTrackTotalHits: true,
     })
     if err != nil {
@@ -244,8 +241,9 @@ if err != nil {
 
 // Use typed operations
 resp, err := client.Search(ctx, &esclient.SearchRequest{
-    Index: "orders_tier_gold",
-    Body:  queryBody,
+    Index:     "orders_tier_gold",
+    Query:     queryMap,
+    CompanyID: companyID,
 })
 ```
 
@@ -384,16 +382,17 @@ err := resolver.InvalidateCompanyCache(ctx, companyID)
 ### Typed Client Operations
 
 ```go
-// Search
+// Search with automatic company_id filter injection for shared indices
 resp, err := client.Search(ctx, &esclient.SearchRequest{
-    Index: "orders",
-    Body:  queryBody,
-    Size:  &size,
-    From:  &offset,
+    Index:              "orders",
+    Query:              queryMap,           // structured query
+    CompanyID:          companyID,          // required for shared indices
+    Size:               &size,
+    From:               &offset,
     WithTrackTotalHits: true,
 })
 
-// Bulk operations
+// Bulk operations (no query, no company filter needed)
 resp, err := client.Bulk(ctx, &esclient.BulkRequest{
     Index: "orders",
     Body:  bulkBody, // NDJSON format
@@ -406,13 +405,14 @@ pit, err := client.OpenPIT(ctx, &esclient.OpenPITRequest{
 })
 defer client.ClosePIT(ctx, pit.ID)
 
-// Delete by query
+// Delete by query with automatic company_id filter
 resp, err := client.DeleteByQuery(ctx, &esclient.DeleteByQueryRequest{
-    Index: "orders",
-    Body:  deleteQuery,
+    Index:     "orders",
+    Query:     deleteQuery,  // structured query
+    CompanyID: companyID,    // required for shared indices
 })
 
-// Index management
+// Index management (no query)
 err := client.CreateIndex(ctx, &esclient.CreateIndexRequest{
     Index: "new_index",
     Body:  mappingsBody,
@@ -422,16 +422,18 @@ exists, err := client.IndexExists(ctx, "orders")
 
 err := client.DeleteIndex(ctx, "old_index")
 
-// Count documents
+// Count documents with automatic company_id filter
 resp, err := client.Count(ctx, &esclient.CountRequest{
-    Index: "orders",
-    Body:  countQuery,
+    Index:     "orders",
+    Query:     countQuery,  // optional, structured query
+    CompanyID: companyID,   // required for shared indices
 })
 
-// Update by query
+// Update by query with automatic company_id filter
 resp, err := client.UpdateByQuery(ctx, &esclient.UpdateByQueryRequest{
-    Index: "orders",
-    Body:  updateScript,
+    Index:     "orders",
+    Query:     updateScript,  // structured query with script
+    CompanyID: companyID,     // required for shared indices
 })
 ```
 
@@ -536,10 +538,53 @@ default:
 ### After (unified library)
 
 ```go
-// Simple, clean, unified
+// Simple, clean, unified - company_id filter automatically injected for shared indices
 client, indexName, err := resolver.Resolve(ctx, companyID, "orders")
 resp, err := client.Search(ctx, &esclient.SearchRequest{
-    Index: indexName,
-    Body:  queryBody,
+    Index:     indexName,
+    Query:     queryMap,
+    CompanyID: companyID,
 })
+```
+
+## Shared Index Support
+
+The library automatically handles per-company and shared indices:
+
+- **Per-company indices**: `products_<company-uuid>` - no company_id filter added
+- **Shared indices**: `products_shared` - automatically injects `term: {company_id: <uuid>}` filter
+
+### How It Works
+
+1. **Index detection**: Library detects index type by name pattern (UUID suffix = per-company)
+2. **Query mutation**: For shared indices, adds company_id filter to `bool.filter` array
+3. **Safe injection**: Deep copies query to avoid mutating caller's data
+4. **Schema agnostic**: Works with both `company_id` (keyword) and `company_id.keyword` (text+keyword)
+
+### Example
+
+```go
+// Service code - same for both index types
+query := map[string]any{
+    "query": map[string]any{
+        "match": map[string]any{"title": "laptop"},
+    },
+}
+
+resp, err := client.Search(ctx, &esclient.SearchRequest{
+    Index:     indexName,  // "products_<uuid>" OR "products_shared"
+    Query:     query,
+    CompanyID: companyID,
+})
+
+// For per-company index: query sent as-is
+// For shared index: automatically becomes:
+// {
+//   "query": {
+//     "bool": {
+//       "must": [{"match": {"title": "laptop"}}],
+//       "filter": [{"term": {"company_id": "<uuid>"}}]
+//     }
+//   }
+// }
 ```

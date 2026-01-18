@@ -1,7 +1,9 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -221,20 +223,21 @@ func (td *testDeps) createTestIndex(t *testing.T, indexName string) {
 		return
 	}
 
-	mapping, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-		"mappings": map[string]interface{}{
-			"properties": map[string]interface{}{
-				"title":      map[string]string{"type": "text"},
-				"price":      map[string]string{"type": "float"},
-				"company_id": map[string]string{"type": "keyword"},
-				"created_at": map[string]string{"type": "date"},
+	mapping := map[string]any{
+		"mappings": map[string]any{
+			"properties": map[string]any{
+				"title":      map[string]any{"type": "text"},
+				"price":      map[string]any{"type": "float"},
+				"company_id": map[string]any{"type": "keyword"},
+				"created_at": map[string]any{"type": "date"},
 			},
 		},
-	})
+	}
+	mappingBytes, _ := json.Marshal(mapping)
 
 	err = td.Client.CreateIndex(ctx, &esclient.CreateIndexRequest{
 		Index: indexName,
-		Body:  mapping,
+		Body:  bytes.NewReader(mappingBytes),
 	})
 	if err != nil {
 		t.Fatalf("failed to create index: %v", err)
