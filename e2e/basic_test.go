@@ -1,8 +1,8 @@
 package e2e
 
 import (
-	"io"
-	"strings"
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	esclient "github.com/billz-2/elasticsearch-cluster"
@@ -26,18 +26,19 @@ func TestBasicOperations(t *testing.T) {
 		assert.False(t, exists)
 
 		// Create index
-		mapping, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-			"mappings": map[string]interface{}{
-				"properties": map[string]interface{}{
-					"title": map[string]string{"type": "text"},
-					"price": map[string]string{"type": "float"},
+		mapping := map[string]any{
+			"mappings": map[string]any{
+				"properties": map[string]any{
+					"title": map[string]any{"type": "text"},
+					"price": map[string]any{"type": "float"},
 				},
 			},
-		})
+		}
+		mappingBytes, _ := json.Marshal(mapping)
 
 		err = deps.Client.CreateIndex(ctx, &esclient.CreateIndexRequest{
 			Index: indexName,
-			Body:  mapping,
+			Body:  bytes.NewReader(mappingBytes),
 		})
 		require.NoError(t, err)
 
@@ -55,16 +56,17 @@ func TestBasicOperations(t *testing.T) {
 		indexName := "test_search_empty"
 		deps.createTestIndex(t, indexName)
 
-		query, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-			"query": map[string]interface{}{
-				"match_all": map[string]interface{}{},
+		query := map[string]any{
+			"query": map[string]any{
+				"match_all": map[string]any{},
 			},
-		})
+		}
 
 		size := 10
 		resp, err := deps.Client.Search(ctx, &esclient.SearchRequest{
 			Index:              indexName,
-			Body:               query,
+			Query:              query,
+			CompanyID:          "test-company",
 			Size:               &size,
 			WithTrackTotalHits: true,
 		})
@@ -81,8 +83,8 @@ func TestBasicOperations(t *testing.T) {
 
 		// Count documents (should be 0)
 		resp, err := deps.Client.Count(ctx, &esclient.CountRequest{
-			Index: indexName,
-			Body:  nil,
+			Index:     indexName,
+			CompanyID: "test-company",
 		})
 
 		require.NoError(t, err)
@@ -168,23 +170,7 @@ func TestRegistryOperations(t *testing.T) {
 }
 
 func TestSearchBodyFromMap(t *testing.T) {
-	query := map[string]interface{}{
-		"query": map[string]interface{}{
-			"match": map[string]interface{}{
-				"title": "test",
-			},
-		},
-	}
-
-	body, err := esclient.SearchBodyFromMap(query)
-	require.NoError(t, err)
-	assert.NotNil(t, body)
-
-	// Read body content
-	buf := new(strings.Builder)
-	_, err = io.Copy(buf, body)
-	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "\"title\":\"test\"")
+	t.Skip("SearchBodyFromMap removed - queries now passed as map[string]any directly")
 }
 
 func TestConfigValidation(t *testing.T) {
