@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -51,34 +53,36 @@ func main() {
 
 	// 6. Create index
 	indexName := "products"
-	mapping, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-		"mappings": map[string]interface{}{
-			"properties": map[string]interface{}{
-				"title": map[string]string{"type": "text"},
-				"price": map[string]string{"type": "float"},
+	mapping := map[string]any{
+		"mappings": map[string]any{
+			"properties": map[string]any{
+				"title": map[string]any{"type": "text"},
+				"price": map[string]any{"type": "float"},
 			},
 		},
-	})
+	}
 
+	mappingBytes, _ := json.Marshal(mapping)
 	err = client.CreateIndex(ctx, &esclient.CreateIndexRequest{
 		Index: indexName,
-		Body:  mapping,
+		Body:  bytes.NewReader(mappingBytes),
 	})
 	if err != nil {
 		log.Printf("Create index error (may already exist): %v", err)
 	}
 
 	// 7. Search
-	query, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-		"query": map[string]interface{}{
-			"match_all": map[string]interface{}{},
+	query := map[string]any{
+		"query": map[string]any{
+			"match_all": map[string]any{},
 		},
-	})
+	}
 
 	size := 10
 	resp, err := client.Search(ctx, &esclient.SearchRequest{
 		Index:              indexName,
-		Body:               query,
+		Query:              query,
+		CompanyID:          "example-company-id", // For demonstration
 		Size:               &size,
 		WithTrackTotalHits: true,
 	})
@@ -90,7 +94,8 @@ func main() {
 
 	// 8. Count documents
 	countResp, err := client.Count(ctx, &esclient.CountRequest{
-		Index: indexName,
+		Index:     indexName,
+		CompanyID: "example-company-id",
 	})
 	if err != nil {
 		log.Fatal(err)

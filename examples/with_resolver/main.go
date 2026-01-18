@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -95,37 +97,39 @@ func main() {
 		indexName := "orders_tier_gold"
 
 		// Create test index
-		mapping, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-			"mappings": map[string]interface{}{
-				"properties": map[string]interface{}{
-					"company_id": map[string]string{"type": "keyword"},
-					"order_id":   map[string]string{"type": "keyword"},
-					"amount":     map[string]string{"type": "float"},
+		mapping := map[string]any{
+			"mappings": map[string]any{
+				"properties": map[string]any{
+					"company_id": map[string]any{"type": "keyword"},
+					"order_id":   map[string]any{"type": "keyword"},
+					"amount":     map[string]any{"type": "float"},
 				},
 			},
-		})
+		}
+		mappingBytes, _ := json.Marshal(mapping)
 
 		err = typedClient.CreateIndex(ctx, &esclient.CreateIndexRequest{
 			Index: indexName,
-			Body:  mapping,
+			Body:  bytes.NewReader(mappingBytes),
 		})
 		if err != nil {
 			log.Printf("Create index error (may already exist): %v", err)
 		}
 
 		// Search
-		query, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-			"query": map[string]interface{}{
-				"term": map[string]interface{}{
+		query := map[string]any{
+			"query": map[string]any{
+				"term": map[string]any{
 					"company_id": companyID,
 				},
 			},
-		})
+		}
 
 		size := 100
 		resp, err := typedClient.Search(ctx, &esclient.SearchRequest{
 			Index:              indexName,
-			Body:               query,
+			Query:              query,
+			CompanyID:          companyID,
 			Size:               &size,
 			WithTrackTotalHits: true,
 		})

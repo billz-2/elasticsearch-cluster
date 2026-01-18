@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -77,18 +79,19 @@ func main() {
 			fmt.Printf("Silver tier: version=%d, url=%s\n", silverEntry.Version, silverEntry.BaseURL)
 
 			// Create index in silver tier
-			mapping, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-				"mappings": map[string]interface{}{
-					"properties": map[string]interface{}{
-						"tier":  map[string]string{"type": "keyword"},
-						"title": map[string]string{"type": "text"},
+			mapping := map[string]any{
+				"mappings": map[string]any{
+					"properties": map[string]any{
+						"tier":  map[string]any{"type": "keyword"},
+						"title": map[string]any{"type": "text"},
 					},
 				},
-			})
+			}
+			mappingBytes, _ := json.Marshal(mapping)
 
 			err = typedSilver.CreateIndex(ctx, &esclient.CreateIndexRequest{
 				Index: "products_silver",
-				Body:  mapping,
+				Body:  bytes.NewReader(mappingBytes),
 			})
 			if err != nil {
 				log.Printf("Silver tier create index error: %v", err)
@@ -100,18 +103,19 @@ func main() {
 	}
 
 	// 6. Create index in gold tier
-	mapping, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-		"mappings": map[string]interface{}{
-			"properties": map[string]interface{}{
-				"tier":  map[string]string{"type": "keyword"},
-				"title": map[string]string{"type": "text"},
+	mapping := map[string]any{
+		"mappings": map[string]any{
+			"properties": map[string]any{
+				"tier":  map[string]any{"type": "keyword"},
+				"title": map[string]any{"type": "text"},
 			},
 		},
-	})
+	}
+	mappingBytes, _ := json.Marshal(mapping)
 
 	err = typedGold.CreateIndex(ctx, &esclient.CreateIndexRequest{
 		Index: "products_gold",
-		Body:  mapping,
+		Body:  bytes.NewReader(mappingBytes),
 	})
 	if err != nil {
 		log.Printf("Gold tier create index error: %v", err)
@@ -119,16 +123,17 @@ func main() {
 		fmt.Println("Created index in gold tier")
 
 		// Search in gold tier
-		query, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-			"query": map[string]interface{}{
-				"match_all": map[string]interface{}{},
+		query := map[string]any{
+			"query": map[string]any{
+				"match_all": map[string]any{},
 			},
-		})
+		}
 
 		size := 10
 		resp, err := typedGold.Search(ctx, &esclient.SearchRequest{
 			Index:              "products_gold",
-			Body:               query,
+			Query:              query,
+			CompanyID:          "example-company",
 			Size:               &size,
 			WithTrackTotalHits: true,
 		})

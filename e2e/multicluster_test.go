@@ -1,6 +1,8 @@
 package e2e
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	esclient "github.com/billz-2/elasticsearch-cluster"
@@ -67,17 +69,18 @@ func TestMultiClusterOperations(t *testing.T) {
 		typedGold, err := esclient.NewClient(goldClient, esV9Addr)
 		require.NoError(t, err)
 
-		mapping, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-			"mappings": map[string]interface{}{
-				"properties": map[string]interface{}{
-					"tier": map[string]string{"type": "keyword"},
+		mapping := map[string]any{
+			"mappings": map[string]any{
+				"properties": map[string]any{
+					"tier": map[string]any{"type": "keyword"},
 				},
 			},
-		})
+		}
+		mappingBytes, _ := json.Marshal(mapping)
 
 		err = typedGold.CreateIndex(ctx, &esclient.CreateIndexRequest{
 			Index: indexName,
-			Body:  mapping,
+			Body:  bytes.NewReader(mappingBytes),
 		})
 		require.NoError(t, err)
 
@@ -93,9 +96,10 @@ func TestMultiClusterOperations(t *testing.T) {
 		typedSilver, err := esclient.NewClient(silverClient, esV8Addr)
 		require.NoError(t, err)
 
+		mappingBytes2, _ := json.Marshal(mapping)
 		err = typedSilver.CreateIndex(ctx, &esclient.CreateIndexRequest{
 			Index: indexName,
-			Body:  mapping,
+			Body:  bytes.NewReader(mappingBytes2),
 		})
 		require.NoError(t, err)
 
@@ -118,41 +122,45 @@ func TestMultiClusterOperations(t *testing.T) {
 		typedGold, err := esclient.NewClient(goldClient, esV9Addr)
 		require.NoError(t, err)
 
-		mapping, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-			"mappings": map[string]interface{}{
-				"properties": map[string]interface{}{
-					"title": map[string]string{"type": "text"},
+		mapping := map[string]any{
+			"mappings": map[string]any{
+				"properties": map[string]any{
+					"title": map[string]any{"type": "text"},
 				},
 			},
-		})
-		_ = typedGold.CreateIndex(ctx, &esclient.CreateIndexRequest{Index: indexName, Body: mapping})
+		}
+		mappingBytes, _ := json.Marshal(mapping)
+		_ = typedGold.CreateIndex(ctx, &esclient.CreateIndexRequest{Index: indexName, Body: bytes.NewReader(mappingBytes)})
 
 		// Setup silver tier
 		silverClient, err := registry.GetClient("tier-silver")
 		require.NoError(t, err)
 		typedSilver, err := esclient.NewClient(silverClient, esV8Addr)
 		require.NoError(t, err)
-		_ = typedSilver.CreateIndex(ctx, &esclient.CreateIndexRequest{Index: indexName, Body: mapping})
+		mappingBytes2, _ := json.Marshal(mapping)
+		_ = typedSilver.CreateIndex(ctx, &esclient.CreateIndexRequest{Index: indexName, Body: bytes.NewReader(mappingBytes2)})
 
 		// Search in gold
-		query, _ := esclient.SearchBodyFromMap(map[string]interface{}{
-			"query": map[string]interface{}{"match_all": map[string]interface{}{}},
-		})
+		query := map[string]any{
+			"query": map[string]any{"match_all": map[string]any{}},
+		}
 		size := 10
 
 		goldResp, err := typedGold.Search(ctx, &esclient.SearchRequest{
-			Index: indexName,
-			Body:  query,
-			Size:  &size,
+			Index:     indexName,
+			Query:     query,
+			CompanyID: "test-company",
+			Size:      &size,
 		})
 		require.NoError(t, err)
 		assert.Equal(t, 0, goldResp.Hits.Total.Value)
 
 		// Search in silver
 		silverResp, err := typedSilver.Search(ctx, &esclient.SearchRequest{
-			Index: indexName,
-			Body:  query,
-			Size:  &size,
+			Index:     indexName,
+			Query:     query,
+			CompanyID: "test-company",
+			Size:      &size,
 		})
 		require.NoError(t, err)
 		assert.Equal(t, 0, silverResp.Hits.Total.Value)
