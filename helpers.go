@@ -83,3 +83,31 @@ func parseBaseURL(address string) (*url.URL, error) {
 
 	return u, nil
 }
+
+// deepCopyMap creates a deep copy of map.
+func deepCopyMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	result := make(map[string]any, len(m))
+	for k, v := range m {
+		result[k] = deepCopyValue(v)
+	}
+	return result
+}
+
+// deepCopyValue creates a deep copy of value.
+func deepCopyValue(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		return deepCopyMap(val)
+	case []any:
+		cp := make([]any, len(val))
+		for i, item := range val {
+			cp[i] = deepCopyValue(item)
+		}
+		return cp
+	default:
+		return v
+	}
+}

@@ -2,15 +2,24 @@ package esclient
 
 import "io"
 
+// IndexTarget represents index type
+type IndexTarget string
+
+const (
+	IndexTargetPerCompany IndexTarget = "per_company"
+	IndexTargetShared     IndexTarget = "shared"
+)
+
 // SearchRequest represents Elasticsearch search request.
 type SearchRequest struct {
-	Index              string      // Index name or pattern
-	Body               io.Reader   // Query body (JSON)
-	Size               *int        // Number of results to return
-	From               *int        // Offset for pagination
-	WithTrackTotalHits bool        // Track total hits accurately
-	PointInTime        *string     // Point-in-time ID for pagination
-	SearchAfter        interface{} // Search after values for pagination
+	Index              string         // Index name or pattern
+	Query              map[string]any // Query body (JSON)
+	CompanyID          string         // Company ID for per-company index
+	Size               *int           // Number of results to return
+	From               *int           // Offset for pagination
+	WithTrackTotalHits bool           // Track total hits accurately
+	PointInTime        *string        // Point-in-time ID for pagination
+	SearchAfter        interface{}    // Search after values for pagination
 }
 
 // SearchResponse represents Elasticsearch search response.
@@ -56,8 +65,9 @@ type PIT struct {
 
 // DeleteByQueryRequest represents delete by query request.
 type DeleteByQueryRequest struct {
-	Index string    // Index name
-	Body  io.Reader // Query body (JSON)
+	Index     string         // Index name
+	Query     map[string]any // Query body (JSON)
+	CompanyID string         // Company ID for per-company index
 }
 
 // DeleteByQueryResponse represents delete by query response.
@@ -84,8 +94,9 @@ type IndexExistsRequest struct {
 
 // CountRequest represents count request.
 type CountRequest struct {
-	Index string    // Index name or pattern
-	Body  io.Reader // Query body (JSON), optional
+	Index     string         // Index name or pattern
+	Query     map[string]any // Query body (JSON), optional
+	CompanyID string         // Company ID for per-company index
 }
 
 // CountResponse represents count response.
@@ -96,8 +107,9 @@ type CountResponse struct {
 
 // UpdateByQueryRequest represents update by query request.
 type UpdateByQueryRequest struct {
-	Index string    // Index name
-	Body  io.Reader // Script and query body (JSON)
+	Index     string         // Index name
+	Query     map[string]any // Query body (JSON)
+	CompanyID string         // Company ID for per-company index
 }
 
 // UpdateByQueryResponse represents update by query response.

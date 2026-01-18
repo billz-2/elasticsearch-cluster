@@ -2,7 +2,6 @@ package esclient
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -37,6 +36,21 @@ func (c *Client) Search(ctx context.Context, req *SearchRequest) (*SearchRespons
 		return nil, errors.New("index name is required")
 	}
 
+	target := DetectIndexTarget(req.Index)
+	queryCopy := deepCopyMap(req.Query)
+
+	if target == IndexTargetPerCompany {
+		mutator := NewQueryMutator()
+		if err := mutator.InjectCompanyFilter(queryCopy, req.CompanyID, target); err != nil {
+			return nil, errors.Wrap(err, "failed to inject company filter")
+		}
+	}
+
+	body, err := jsonBody(queryCopy)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal query")
+	}
+
 	path := fmt.Sprintf("/%s/_search", req.Index)
 	query := url.Values{}
 
@@ -51,7 +65,7 @@ func (c *Client) Search(ctx context.Context, req *SearchRequest) (*SearchRespons
 	}
 
 	u := newURL(c.baseURL, path, query)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), req.Body)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), body)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create search request")
 	}
@@ -170,10 +184,25 @@ func (c *Client) DeleteByQuery(ctx context.Context, req *DeleteByQueryRequest) (
 		return nil, errors.New("index name is required")
 	}
 
+	target := DetectIndexTarget(req.Index)
+	queryCopy := deepCopyMap(req.Query)
+
+	if target == IndexTargetShared {
+		mutator := NewQueryMutator()
+		if err := mutator.InjectCompanyFilter(queryCopy, req.CompanyID, target); err != nil {
+			return nil, errors.Wrap(err, "failed to inject company filter")
+		}
+	}
+
+	body, err := jsonBody(queryCopy)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to encode query")
+	}
+
 	path := fmt.Sprintf("/%s/_delete_by_query", req.Index)
 	u := newURL(c.baseURL, path, nil)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), req.Body)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), body)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create delete by query request")
 	}
@@ -273,14 +302,33 @@ func (c *Client) Count(ctx context.Context, req *CountRequest) (*CountResponse, 
 		return nil, errors.New("index name is required")
 	}
 
+	target := DetectIndexTarget(req.Index)
+	query := req.Query
+	if query == nil {
+		query = make(map[string]any)
+	}
+	queryCopy := deepCopyMap(query)
+
+	if target == IndexTargetShared {
+		mutator := NewQueryMutator()
+		if err := mutator.InjectCompanyFilter(queryCopy, req.CompanyID, target); err != nil {
+			return nil, errors.Wrap(err, "failed to inject company filter")
+		}
+	}
+
+	body, err := jsonBody(queryCopy)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to encode query")
+	}
+
 	path := fmt.Sprintf("/%s/_count", req.Index)
 	u := newURL(c.baseURL, path, nil)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), req.Body)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), body)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create count request")
 	}
-	if req.Body != nil {
+	if body != nil {
 		contentTypeJSON(httpReq)
 	}
 
@@ -303,10 +351,25 @@ func (c *Client) UpdateByQuery(ctx context.Context, req *UpdateByQueryRequest) (
 		return nil, errors.New("index name is required")
 	}
 
+	target := DetectIndexTarget(req.Index)
+	queryCopy := deepCopyMap(req.Query)
+
+	if target == IndexTargetShared {
+		mutator := NewQueryMutator()
+		if err := mutator.InjectCompanyFilter(queryCopy, req.CompanyID, target); err != nil {
+			return nil, errors.Wrap(err, "failed to inject company filter")
+		}
+	}
+
+	body, err := jsonBody(queryCopy)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to encode query")
+	}
+
 	path := fmt.Sprintf("/%s/_update_by_query", req.Index)
 	u := newURL(c.baseURL, path, nil)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), req.Body)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), body)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create update by query request")
 	}
@@ -380,13 +443,4 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, body inter
 	status, err := doJSON(ctx, c.es, httpReq, &result)
 
 	return status, result, err
-}
-
-// Helper function to create search body from map
-func SearchBodyFromMap(query map[string]interface{}) (interface{ Read([]byte) (int, error) }, error) {
-	b, err := json.Marshal(query)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to marshal query")
-	}
-	return strings.NewReader(string(b)), nil
 }
