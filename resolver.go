@@ -91,6 +91,7 @@ func NewResolver(cfg ResolverConfig) (*Resolver, error) {
 		clients[clusterName] = &Client{
 			es:      entry.ES,
 			baseURL: baseURL,
+			log:     safeLogger(cfg.Logger),
 		}
 	}
 
