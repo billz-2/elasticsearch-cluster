@@ -13,7 +13,20 @@ import (
 
 // doJSON executes HTTP request and decodes JSON response.
 // Returns status code and error if any.
-func doJSON(ctx context.Context, c ESClient, req *http.Request, out interface{}) (int, error) {
+func doJSON(ctx context.Context, c ESClient, req *http.Request, out interface{}, log Logger) (int, error) {
+	// Log request body on trace level
+	if req.Body != nil {
+		reqBodyBytes, err := io.ReadAll(req.Body)
+		if err == nil {
+			req.Body = io.NopCloser(bytes.NewReader(reqBodyBytes))
+			log.TraceWithCtx(ctx, "elasticsearch request body", map[string]interface{}{
+				"method": req.Method,
+				"path":   req.URL.Path,
+				"body":   string(reqBodyBytes),
+			})
+		}
+	}
+
 	res, err := c.Do(ctx, req)
 	if err != nil {
 		return 0, errors.Wrap(err, "http request failed")
@@ -30,6 +43,13 @@ func doJSON(ctx context.Context, c ESClient, req *http.Request, out interface{})
 	if err != nil {
 		return status, errors.Wrap(err, "failed to read response body")
 	}
+
+	// Log response body on trace level
+	log.TraceWithCtx(ctx, "elasticsearch response body", map[string]interface{}{
+		"status_code": status,
+		"path":        req.URL.Path,
+		"body":        string(bodyBytes),
+	})
 
 	if status >= http.StatusMultipleChoices {
 		return status, nil
