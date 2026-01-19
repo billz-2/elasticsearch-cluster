@@ -46,7 +46,7 @@ func (c *Client) Search(ctx context.Context, req *SearchRequest) (*SearchRespons
 	target := DetectIndexTarget(req.Index)
 	queryCopy := deepCopyMap(req.Query)
 
-	if target == IndexTargetPerCompany {
+	if target == IndexTargetShared {
 		mutator := NewQueryMutator()
 		if err := mutator.InjectCompanyFilter(queryCopy, req.CompanyID, target); err != nil {
 			return nil, errors.Wrap(err, "failed to inject company filter")
