@@ -2,14 +2,12 @@ package esclient
 
 import "context"
 
-// Logger interface for debug/trace logging.
+// Logger interface for debug logging.
 // Compatible with github.com/billz-2/packages/pkg/logger interface.
 // If logger is not provided (nil), all logging is disabled (no-op).
 type Logger interface {
 	Debug(msg string, fields ...any)
 	DebugWithCtx(ctx context.Context, msg string, fields ...any)
-	Trace(msg string, fields ...any)
-	TraceWithCtx(ctx context.Context, msg string, fields ...any)
 }
 
 // noopLogger is a no-op implementation used when logger is not provided.
@@ -17,8 +15,6 @@ type noopLogger struct{}
 
 func (noopLogger) Debug(msg string, fields ...any)                             {}
 func (noopLogger) DebugWithCtx(ctx context.Context, msg string, fields ...any) {}
-func (noopLogger) Trace(msg string, fields ...any)                             {}
-func (noopLogger) TraceWithCtx(ctx context.Context, msg string, fields ...any) {}
 
 // safeLogger returns the provided logger or no-op logger if nil.
 func safeLogger(log Logger) Logger {
