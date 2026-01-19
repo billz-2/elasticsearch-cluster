@@ -15,10 +15,16 @@ import (
 type Client struct {
 	es      ESClient
 	baseURL *url.URL
+	log     Logger
 }
 
 // NewClient creates a typed client wrapper around ESClient.
 func NewClient(es ESClient, baseURL string) (*Client, error) {
+	return NewClientWithLogger(es, baseURL, nil)
+}
+
+// NewClientWithLogger creates a typed client wrapper around ESClient with logger.
+func NewClientWithLogger(es ESClient, baseURL string, log Logger) (*Client, error) {
 	u, err := parseBaseURL(baseURL)
 	if err != nil {
 		return nil, err
@@ -27,6 +33,7 @@ func NewClient(es ESClient, baseURL string) (*Client, error) {
 	return &Client{
 		es:      es,
 		baseURL: u,
+		log:     safeLogger(log),
 	}, nil
 }
 
@@ -72,7 +79,7 @@ func (c *Client) Search(ctx context.Context, req *SearchRequest) (*SearchRespons
 	contentTypeJSON(httpReq)
 
 	var resp SearchResponse
-	status, err := doJSON(ctx, c.es, httpReq, &resp)
+	status, err := doJSON(ctx, c.es, httpReq, &resp, c.log)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +111,7 @@ func (c *Client) OpenPIT(ctx context.Context, req *OpenPITRequest) (*PIT, error)
 	}
 
 	var pit PIT
-	status, err := doJSON(ctx, c.es, httpReq, &pit)
+	status, err := doJSON(ctx, c.es, httpReq, &pit, c.log)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +144,7 @@ func (c *Client) ClosePIT(ctx context.Context, pitID string) error {
 	}
 	contentTypeJSON(httpReq)
 
-	status, err := doJSON(ctx, c.es, httpReq, nil)
+	status, err := doJSON(ctx, c.es, httpReq, nil, c.log)
 	if err != nil {
 		return err
 	}
@@ -167,7 +174,7 @@ func (c *Client) Bulk(ctx context.Context, req *BulkRequest) (*BulkResponse, err
 	httpReq.Header.Set("Content-Type", "application/x-ndjson")
 
 	var resp BulkResponse
-	status, err := doJSON(ctx, c.es, httpReq, &resp)
+	status, err := doJSON(ctx, c.es, httpReq, &resp, c.log)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +216,7 @@ func (c *Client) DeleteByQuery(ctx context.Context, req *DeleteByQueryRequest) (
 	contentTypeJSON(httpReq)
 
 	var resp DeleteByQueryResponse
-	status, err := doJSON(ctx, c.es, httpReq, &resp)
+	status, err := doJSON(ctx, c.es, httpReq, &resp, c.log)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +243,7 @@ func (c *Client) CreateIndex(ctx context.Context, req *CreateIndexRequest) error
 	}
 	contentTypeJSON(httpReq)
 
-	status, err := doJSON(ctx, c.es, httpReq, nil)
+	status, err := doJSON(ctx, c.es, httpReq, nil, c.log)
 	if err != nil {
 		return err
 	}
@@ -262,7 +269,7 @@ func (c *Client) DeleteIndex(ctx context.Context, indexName string) error {
 		return errors.Wrap(err, "failed to create delete index request")
 	}
 
-	status, err := doJSON(ctx, c.es, httpReq, nil)
+	status, err := doJSON(ctx, c.es, httpReq, nil, c.log)
 	if err != nil {
 		return err
 	}
@@ -288,7 +295,7 @@ func (c *Client) IndexExists(ctx context.Context, indexName string) (bool, error
 		return false, errors.Wrap(err, "failed to create index exists request")
 	}
 
-	status, err := doJSON(ctx, c.es, httpReq, nil)
+	status, err := doJSON(ctx, c.es, httpReq, nil, c.log)
 	if err != nil {
 		return false, err
 	}
@@ -333,7 +340,7 @@ func (c *Client) Count(ctx context.Context, req *CountRequest) (*CountResponse, 
 	}
 
 	var resp CountResponse
-	status, err := doJSON(ctx, c.es, httpReq, &resp)
+	status, err := doJSON(ctx, c.es, httpReq, &resp, c.log)
 	if err != nil {
 		return nil, err
 	}
@@ -376,7 +383,7 @@ func (c *Client) UpdateByQuery(ctx context.Context, req *UpdateByQueryRequest) (
 	contentTypeJSON(httpReq)
 
 	var resp UpdateByQueryResponse
-	status, err := doJSON(ctx, c.es, httpReq, &resp)
+	status, err := doJSON(ctx, c.es, httpReq, &resp, c.log)
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +414,7 @@ func (c *Client) CreateDocument(ctx context.Context, req *CreateDocumentRequest)
 	contentTypeJSON(httpReq)
 
 	var resp CreateDocumentResponse
-	status, err := doJSON(ctx, c.es, httpReq, &resp)
+	status, err := doJSON(ctx, c.es, httpReq, &resp, c.log)
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +447,7 @@ func (c *Client) RawRequest(ctx context.Context, method, path string, body inter
 	}
 
 	var result map[string]interface{}
-	status, err := doJSON(ctx, c.es, httpReq, &result)
+	status, err := doJSON(ctx, c.es, httpReq, &result, c.log)
 
 	return status, result, err
 }
