@@ -80,7 +80,7 @@ func TestQueryMutator_InjectCompanyFilter_SharedIndex_NoQuery(t *testing.T) {
 		"query": {
 			"bool": {
 				"filter": [
-					{"term": {"company_id": "company-456"}}
+					{"term": {"company_id.keyword": "company-456"}}
 				]
 			}
 		}
@@ -109,7 +109,7 @@ func TestQueryMutator_InjectCompanyFilter_SharedIndex_MatchAllQuery(t *testing.T
 					{"match_all": {}}
 				],
 				"filter": [
-					{"term": {"company_id": "company-789"}}
+					{"term": {"company_id.keyword": "company-789"}}
 				]
 			}
 		}
@@ -150,8 +150,8 @@ func TestQueryMutator_InjectCompanyFilter_SharedIndex_BoolWithFilter(t *testing.
 	for _, f := range filters {
 		fm := f.(map[string]any)
 		if term, ok := fm["term"].(map[string]any); ok {
-			if _, hasCompanyID := term["company_id"]; hasCompanyID {
-				assert.Equal(t, "company-abc", term["company_id"])
+			if _, hasCompanyID := term["company_id.keyword"]; hasCompanyID {
+				assert.Equal(t, "company-abc", term["company_id.keyword"])
 				found = true
 				break
 			}
@@ -208,7 +208,7 @@ func TestQueryMutator_InjectCompanyFilter_SharedIndex_BoolWithoutFilter(t *testi
 					{"match": {"name": "product"}}
 				],
 				"filter": [
-					{"term": {"company_id": "company-ghi"}}
+					{"term": {"company_id.keyword": "company-ghi"}}
 				]
 			}
 		}
