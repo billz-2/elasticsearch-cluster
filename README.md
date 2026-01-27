@@ -552,7 +552,7 @@ resp, err := client.Search(ctx, &esclient.SearchRequest{
 The library automatically handles per-company and shared indices:
 
 - **Per-company indices**: `products_<company-uuid>` - no company_id filter added
-- **Shared indices**: `products_shared` - automatically injects `term: {company_id: <uuid>}` filter
+- **Shared indices**: `products_shared` - automatically injects `term: {company_id.keyword: <uuid>}` filter
 
 ### How It Works
 
@@ -583,7 +583,7 @@ resp, err := client.Search(ctx, &esclient.SearchRequest{
 //   "query": {
 //     "bool": {
 //       "must": [{"match": {"title": "laptop"}}],
-//       "filter": [{"term": {"company_id": "<uuid>"}}]
+//       "filter": [{"term": {"company_id.keyword": "<uuid>"}}]
 //     }
 //   }
 // }
