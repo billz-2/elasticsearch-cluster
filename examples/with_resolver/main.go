@@ -120,7 +120,7 @@ func main() {
 		query := map[string]any{
 			"query": map[string]any{
 				"term": map[string]any{
-					"company_id": companyID,
+					"company_id.keyword": companyID,
 				},
 			},
 		}

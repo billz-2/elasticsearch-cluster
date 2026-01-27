@@ -41,7 +41,7 @@ func (m *QueryMutator) InjectCompanyFilter(query map[string]any, companyID strin
 
 	companyFilter := map[string]any{
 		"term": map[string]any{
-			"company_id": companyID,
+			"company_id.keyword": companyID,
 		},
 	}
 
